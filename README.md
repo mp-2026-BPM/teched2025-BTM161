@@ -1,4 +1,4 @@
-# Session ID - Session Title
+# BTM161 - AI agent mining and governance with SAP Signavio solutions
 
 ## Description
 
