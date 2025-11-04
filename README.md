@@ -31,8 +31,8 @@ This section covers the prerequisites and the installation process required for 
 1. Activate the virtual environment created by poetry. To obtain the appropriate activation command for this run `poetry env activate`. (Alternative: Prefix all subsequent commands with `poetry run`, which will execute the command in the virtual environment.)
 1. Install the appropriate langchain integration package fitting your supported LLM provider:
     1. Identify the name of the package using the [documentation](https://github.com/langchain-ai/langgraph/blob/a10a66cbd151c92f89d6476fb70e5e405ce50b98/docs/docs/snippets/chat_model_tabs.md)), e.g., `langchain[openai]` or `langchain[anthropic]`.
-    1. Install the package _in the version fitting this repository_ by adjusting and running `pip install "langchain[PROVIDER]<1.0.0"`, e.g., `pip install "langchain[openai]<1.0.0` or `pip install langchain[anthropic]<1.0.0`.
-1. Open `src/coffee_shop.py` and, starting line 20, configure access to the LLM, like credentials or API keys, according to the [documentation](https://github.com/langchain-ai/langgraph/blob/a10a66cbd151c92f89d6476fb70e5e405ce50b98/docs/docs/snippets/chat_model_tabs.md).
+    2. Install the package _in the version fitting this repository_ by adjusting and running `pip install "langchain[PROVIDER]<1.0.0"`, e.g., `pip install "langchain[openai]<1.0.0"` or `pip install "langchain[anthropic]<1.0.0"`.
+3. Open `src/coffee_shop.py` and, starting line 20, configure access to the LLM, like credentials or API keys, according to the [documentation](https://github.com/langchain-ai/langgraph/blob/a10a66cbd151c92f89d6476fb70e5e405ce50b98/docs/docs/snippets/chat_model_tabs.md).
 1. Start the Jupyter server by running `jupyter notebook`.
 1. Now, you should be able to open and run the first notebook: `1_Standard_agentic_coffee_shop.ipynb`.
 
