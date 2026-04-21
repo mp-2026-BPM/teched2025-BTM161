@@ -8,19 +8,20 @@ from collections import defaultdict
 import ipywidgets as widgets
 import os
 from IPython.display import display, clear_output, HTML
-from langchain.chat_models import init_chat_model
+from langchain_ollama import ChatOllama
 
 from .agents import (
     MENU, inventory_manager,
-    create_order_agent, create_inventory_agent, 
-    create_barista_agent, create_customer_service_agent
+    create_order_agent, create_inventory_agent,
+    create_barista_agent, create_customer_service_agent,
+    CustomerAgent, CUSTOMER_SCENARIOS,
 )
 from .styles import ENHANCED_CSS
 
 # CONFIGURE LLM AND REQUIRED CREDENTIALS HERE
 # SEE ALSO: https://github.com/langchain-ai/langgraph/blob/a10a66cbd151c92f89d6476fb70e5e405ce50b98/docs/docs/snippets/chat_model_tabs.md
 # DO NOT FORGET TO ALSO RUN THE RESPECTIVE `pip install -U "langchain[PROVIDER_NAME]"` COMMAND AS STATED IN THE LINKED DOCUMENTATION
-chat_llm = init_chat_model("MODEL_NAME")
+chat_llm = ChatOllama(model="ministral-3:14b")
 
 
 mlflow.langchain.autolog()
@@ -35,6 +36,9 @@ class CoffeeShop():
         self.agent_definitions = defaultdict(str)
         self.traces_of_latest_conversations = []
         self.verbose_mode = True  # Default to verbose mode
+        self.customer_agent_enabled = False
+        self.customer_agent = None
+        self._last_agent_message = None
         
         # Agent configuration with icons and colors
         self.agent_config = {
@@ -80,6 +84,8 @@ class CoffeeShop():
         """Start the coffee shop application after potentially updating agent definitions"""
 
         inventory_manager.reset()
+
+        self.customer_agent = CustomerAgent(chat_llm)
 
         # CREATE AGENTS
         order_agent = create_order_agent(chat_llm, self.agent_definitions.get('order_agent', None))
@@ -260,6 +266,9 @@ class CoffeeShop():
                                 # Display the message bubble
                                 bubble_html = self._format_message_bubble(agent_name, content, is_user=False, is_important=is_important)
                                 display(HTML(bubble_html))
+                                # Track last customer-facing agent message for the customer agent
+                                if agent_name in ('order_agent', 'barista_agent', 'customer_service_agent') and content:
+                                    self._last_agent_message = content
                                 # Auto-scroll to bottom after displaying message
                                 self._auto_scroll_to_bottom()
                         else:
@@ -279,10 +288,11 @@ class CoffeeShop():
                     button.disabled = True
             else:
                 self.status_indicator.value = ""
-                # Re-enable input controls
-                self.text_input.disabled = False
-                self.send_button.disabled = False
-                self.text_input.focus()
+                # Re-enable input controls (keep manual input disabled when customer agent is on)
+                if not self.customer_agent_enabled:
+                    self.text_input.disabled = False
+                    self.send_button.disabled = False
+                    self.text_input.focus()
                 if hasattr(self, 'restock_button'):
                     self.restock_button.disabled = False
                 for button in self.scenario_buttons.children:
@@ -338,6 +348,29 @@ class CoffeeShop():
         finally:
             # Always reset to ready status when done
             self._set_processing_status(False)
+
+        # Auto-continue with customer agent if enabled
+        if self.customer_agent_enabled and self._last_agent_message:
+            next_msg = self.customer_agent.respond_to(self._last_agent_message)
+            self._last_agent_message = None
+            if next_msg:
+                self.continue_conversation_interactive(thread_id, next_msg, output_widget)
+            else:
+                # Conversation complete — show a notice
+                with output_widget:
+                    display(HTML("""
+                    <div style="
+                        background: linear-gradient(45deg, #e8f5e9, #a5d6a7);
+                        border: 1px solid #4caf50;
+                        border-radius: 10px;
+                        padding: 12px;
+                        margin: 10px 0;
+                        text-align: center;
+                        color: #1b5e20;
+                    ">
+                        🤖 Auto Customer conversation complete.
+                    </div>
+                    """))
 
     def _inject_enhanced_css(self):
         """Inject enhanced CSS for the chat interface"""
@@ -417,6 +450,28 @@ class CoffeeShop():
         self.new_conversation_button.add_class('default-button')
         self.new_conversation_button.on_click(self._on_new_conversation_clicked)
         
+        # Create customer agent toggle
+        self.customer_agent_toggle = widgets.ToggleButton(
+            value=self.customer_agent_enabled,
+            description='🤖 Auto Customer: Off',
+            disabled=False,
+            button_style='',
+            tooltip='Toggle automatic customer agent that guides the conversation'
+        )
+        self.customer_agent_toggle.add_class('default-button')
+        self.customer_agent_toggle.observe(self._on_customer_agent_toggle_changed, names='value')
+
+        # Scenario dropdown for customer agent
+        self.customer_scenario_dropdown = widgets.Dropdown(
+            options=[(f'Scenario {i+1}: {s[:40]}...', i) for i, s in enumerate(CUSTOMER_SCENARIOS)],
+            value=0,
+            description='Scenario:',
+            style={'description_width': '65px'},
+            layout=widgets.Layout(width='320px'),
+            disabled=True,
+        )
+        self.customer_scenario_dropdown.observe(self._on_customer_scenario_changed, names='value')
+
         # Create verbose/silent mode toggle
         self.verbose_toggle = widgets.ToggleButton(
             value=self.verbose_mode,
@@ -440,7 +495,9 @@ class CoffeeShop():
         controls_buttons = widgets.HBox([
             self.new_conversation_button,
             self.verbose_toggle,
-            self.restock_button
+            self.restock_button,
+            self.customer_agent_toggle,
+            self.customer_scenario_dropdown,
         ])
         controls_buttons.add_class('button-group')
        
@@ -559,6 +616,7 @@ class CoffeeShop():
     def _start_new_conversation(self):
         """Start a new conversation thread"""
         self.current_thread_id = str(uuid.uuid4())
+        self._last_agent_message = None
 
         with self.output:
             clear_output()
@@ -575,6 +633,13 @@ class CoffeeShop():
             </div>
             """
             display(HTML(welcome_html))
+
+        if self.customer_agent_enabled and self.customer_agent:
+            scenario_idx = self.customer_scenario_dropdown.value if hasattr(self, 'customer_scenario_dropdown') else None
+            self.customer_agent.reset(scenario_idx)
+            first_msg = self.customer_agent.get_initial_message()
+            self.text_input.value = first_msg
+            self._on_send_button_clicked(None)
     
     def _on_restock_clicked(self, button):
         """Handle restock button click"""
@@ -669,7 +734,7 @@ class CoffeeShop():
     def _on_verbose_toggle_changed(self, change):
         """Handle verbose mode toggle changes"""
         self.verbose_mode = change['new']
-        
+
         # Update toggle description and button style based on mode
         if self.verbose_mode:
             self.output.remove_class('chat-silent-mode')
@@ -679,3 +744,28 @@ class CoffeeShop():
             self.verbose_toggle.description = '🔇 Verbose: Off'
             self.verbose_toggle.button_style = 'warning'
             self.output.add_class('chat-silent-mode')
+
+    def _on_customer_agent_toggle_changed(self, change):
+        """Handle customer agent toggle changes"""
+        self.customer_agent_enabled = change['new']
+        if self.customer_agent_enabled:
+            self.customer_agent_toggle.description = '🤖 Auto Customer: On'
+            self.customer_agent_toggle.button_style = 'success'
+            self.customer_scenario_dropdown.disabled = False
+            # Disable manual input while auto customer is active
+            self.text_input.disabled = True
+            self.send_button.disabled = True
+            # Start a fresh conversation driven by the customer agent
+            self._start_new_conversation()
+        else:
+            self.customer_agent_toggle.description = '🤖 Auto Customer: Off'
+            self.customer_agent_toggle.button_style = ''
+            self.customer_scenario_dropdown.disabled = True
+            # Re-enable manual input
+            self.text_input.disabled = False
+            self.send_button.disabled = False
+
+    def _on_customer_scenario_changed(self, change):
+        """Handle scenario dropdown selection — reset customer agent with new scenario"""
+        if self.customer_agent and self.customer_agent_enabled:
+            self._start_new_conversation()

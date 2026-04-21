@@ -86,6 +86,21 @@ The session contains three exercises in the form of Juypter notebooks, which are
 - Provide preparation time estimates
 - Quality control and remake capabilities
 
+### 🙋 Customer Agent
+**Role**: Simulates a customer interacting with the coffee shop
+**Scenarios**:
+- Ordering a latte and croissant
+- Quickly ordering two espressos
+- Complaining about a cold drink and seeking resolution
+- Asking for a recommendation and ordering based on the suggestion
+
+**Behavior**:
+- Picks a scenario randomly (or by index via `reset()`)
+- Drives the conversation by sending an opening message and responding to agent replies
+- Ends the conversation after at most 8 turns, or when the goal is achieved (signals `DONE`)
+
+---
+
 ### 🤝 Customer Service Agent
 **Role**: Manages customer satisfaction and issue resolution
 **Tools**:
