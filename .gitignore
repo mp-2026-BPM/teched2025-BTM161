@@ -1,0 +1,13 @@
+# Jupyter
+.ipynb_checkpoints/
+
+# MLflow experiment tracking
+mlruns/
+
+# Generated outputs
+generated_event_log/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
