@@ -11,3 +11,5 @@ generated_event_log/
 __pycache__/
 *.pyc
 *.pyo
+
+.DS_Store
