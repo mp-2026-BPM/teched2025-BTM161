@@ -60,7 +60,7 @@ def create_customer_service_agent(chat_llm, prompt=None):
 
     tools = [offer_refund, offer_partial_refund, transfer_to_order_agent, transfer_to_barista, transfer_to_inventory]
 
-    llm_with_tools = chat_llm.bind_tools(tools, parallel_tool_calls=False)
+    llm_with_tools = chat_llm.bind_tools(tools)
 
     return create_react_agent(
         model=llm_with_tools,

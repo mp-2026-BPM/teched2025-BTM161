@@ -118,7 +118,7 @@ def create_order_agent(chat_llm, prompt=None):
 
     tools = [process_order, calculate_total, transfer_to_inventory, transfer_to_customer_service]
 
-    llm_with_tools = chat_llm.bind_tools(tools, parallel_tool_calls=False)
+    llm_with_tools = chat_llm.bind_tools(tools)
 
     return create_react_agent(
         model=llm_with_tools,

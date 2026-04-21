@@ -87,7 +87,7 @@ def create_barista_agent(chat_llm, prompt=None):
 
     tools = [prepare_order, remake_order_item, estimate_prep_time, transfer_to_customer_service]
 
-    llm_with_tools = chat_llm.bind_tools(tools, parallel_tool_calls=False)
+    llm_with_tools = chat_llm.bind_tools(tools)
 
     return create_react_agent(
         model=llm_with_tools,

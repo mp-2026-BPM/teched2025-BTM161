@@ -132,7 +132,7 @@ def create_inventory_agent(chat_llm, prompt=None):
     tools = [check_inventory, update_stock, get_alternatives,
              transfer_to_barista, transfer_to_customer_service]
 
-    llm_with_tools = chat_llm.bind_tools(tools, parallel_tool_calls=False)
+    llm_with_tools = chat_llm.bind_tools(tools)
 
     return create_react_agent(
         model=llm_with_tools,
