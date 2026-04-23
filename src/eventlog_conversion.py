@@ -97,7 +97,7 @@ def _extract_order_items(text: str) -> list[str]:
     return items
 
 
-def convert_to_ocel(df_raw: pd.DataFrame) -> ObjectCentricEventlog:
+def convert_to_ocel(el: pd.DataFrame) -> ObjectCentricEventlog:
     """
     Transform a flat event log DataFrame into an OCEL 2.0 object.
 
@@ -115,13 +115,25 @@ def convert_to_ocel(df_raw: pd.DataFrame) -> ObjectCentricEventlog:
     # -----------------------------------------------------------------------
     # 1.  Normalise timestamps
     # -----------------------------------------------------------------------
-    df = df_raw.copy()
+    df = el.copy()
     df["time_finished"] = pd.to_datetime(df["time_finished"])
     df["time:timestamp"] = pd.to_datetime(df["time:timestamp"])
 
     # -----------------------------------------------------------------------
     # 2.  Build OBJECTS
     # -----------------------------------------------------------------------
+
+    objects = (
+        el[["org:resource", "case_id"]]
+        .copy()
+        .assign(
+            ocel_type=lambda d: d["org:resource"].str.contains("agent").map({True: "agent", False: "user"}),
+            ocel_id=lambda d: d["case_id"].where(~d["org:resource"].str.contains("agent"),d["org:resource"])
+        )
+        .drop(columns=["org:resource", "case_id"])
+        .drop_duplicates()
+    )
+
 
     object_rows: list[dict] = []
     seen_oids: set[str] = set()
@@ -333,7 +345,7 @@ def convert_to_ocel(df_raw: pd.DataFrame) -> ObjectCentricEventlog:
         columns=["_case_id", "_resource", "_raw_message"], errors="ignore"
     )
 
-    return ObjectCentricEventlog(events=events_df, objects=objects_df, events_to_objects=e2o_df)
+    return ObjectCentricEventlog(events=events_df, objects=objects, events_to_objects=e2o_df)
 
 
 def load_and_convert(csv_path: str) -> ObjectCentricEventlog:
