@@ -9,6 +9,9 @@ def _create_chat_llm():
     provider = os.getenv("LLM_PROVIDER", "ollama").lower().strip()
 
     if provider == "anthropic":
+        # Uses the SAP-internal Hyperspace AI (HAI) proxy, which forwards
+        # requests to Anthropic. Model IDs and base_url defaults reflect
+        # the HAI convention, not the public Anthropic API.
         from langchain_anthropic import ChatAnthropic
 
         api_key = os.getenv("ANTHROPIC_API_KEY")
