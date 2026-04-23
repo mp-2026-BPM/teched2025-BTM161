@@ -8,20 +8,14 @@ from collections import defaultdict
 import ipywidgets as widgets
 import os
 from IPython.display import display, clear_output, HTML
-from langchain_ollama import ChatOllama
-
 from .agents import (
     MENU, inventory_manager,
     create_order_agent, create_inventory_agent,
     create_barista_agent, create_customer_service_agent,
     CustomerAgent, CUSTOMER_SCENARIOS,
 )
+from .llm import chat_llm, normalize_content
 from .styles import ENHANCED_CSS
-
-# CONFIGURE LLM AND REQUIRED CREDENTIALS HERE
-# SEE ALSO: https://github.com/langchain-ai/langgraph/blob/a10a66cbd151c92f89d6476fb70e5e405ce50b98/docs/docs/snippets/chat_model_tabs.md
-# DO NOT FORGET TO ALSO RUN THE RESPECTIVE `pip install -U "langchain[PROVIDER_NAME]"` COMMAND AS STATED IN THE LINKED DOCUMENTATION
-chat_llm = ChatOllama(model="ministral-3:14b")
 
 
 mlflow.langchain.autolog()
@@ -259,7 +253,7 @@ class CoffeeShop():
 
                                 # Extract agent name and content
                                 agent_name = getattr(message, 'name', 'unknown')
-                                content = getattr(message, 'content', str(message))
+                                content = normalize_content(getattr(message, 'content', str(message)))
                                 
                                 
                                 is_important = self._should_show_message_in_silent_mode(agent_name, content)

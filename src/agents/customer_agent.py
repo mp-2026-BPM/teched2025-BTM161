@@ -1,6 +1,8 @@
 import random
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
+from ..llm import normalize_content
+
 CUSTOMER_SCENARIOS = [
     "You want to order a large latte and a croissant. Be friendly.",
     "You want 2 espressos. You're in a hurry, so keep it brief.",
@@ -45,7 +47,7 @@ Guidelines:
             HumanMessage(content="Write your opening message to the coffee shop staff to start the conversation."),
         ]
         response = self.llm.invoke(messages)
-        text = response.content.strip()
+        text = normalize_content(response.content).strip()
         self.history.append(("customer", text))
         return text
 
@@ -65,7 +67,7 @@ Guidelines:
                 messages.append(HumanMessage(content=content))
 
         response = self.llm.invoke(messages)
-        text = response.content.strip()
+        text = normalize_content(response.content).strip()
 
         if text.upper() == "DONE" or (len(text) <= 10 and "DONE" in text.upper()):
             return None
