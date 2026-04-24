@@ -1,9 +1,14 @@
 import argparse
+import os
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from .coffee_shop import CoffeeShop
+from dotenv import load_dotenv
+
 from .agents.customer_agent import CUSTOMER_SCENARIOS
-from .trace_processing import TraceProcessor
+
+
+load_dotenv()
 
 
 def parse_scenario(value):
@@ -30,6 +35,32 @@ def pick_scenario_index(mode, fixed_index, trace_number):
     return None
 
 
+def _run_single_trace(trace_number, total_traces, scenario_index, quiet):
+    """Run one conversation in its own process with fully isolated state."""
+    from .coffee_shop import CoffeeShop
+
+    scenario_label = CUSTOMER_SCENARIOS[scenario_index] if scenario_index is not None else "random"
+    prefix = f"[Trace {trace_number + 1}/{total_traces}]"
+
+    print(f"{prefix} Starting | Scenario {scenario_index}: {scenario_label[:60]}")
+
+    shop = CoffeeShop()
+    shop.open_shop()
+
+    if quiet:
+        on_message = None
+    else:
+        def on_message(role, content):
+            tag = "Customer" if role == "customer" else "Agent"
+            print(f"{prefix}  [{tag}] {content[:200]}")
+
+    trace_ids = shop.run_conversation(scenario_index=scenario_index, on_message=on_message)
+
+    print(f"{prefix} Done | Trace IDs: {trace_ids}")
+
+    return trace_ids
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run headless coffee shop simulations to generate traces"
@@ -54,31 +85,56 @@ def main():
 
     scenario_mode, scenario_index = parse_scenario(args.scenario)
 
-    print("Initializing coffee shop...")
-    shop = CoffeeShop()
-    shop.open_shop()
-    print(f"Coffee shop is open. Running {args.traces} trace(s).\n")
+    parallel = os.getenv("SIMULATION_PARALLEL", "false").lower().strip() == "true"
+    max_workers = int(os.getenv("SIMULATION_PARALLEL_WORKERS", "4"))
 
     all_trace_ids = []
-    for i in range(args.traces):
-        idx = pick_scenario_index(scenario_mode, scenario_index, i)
-        scenario_label = CUSTOMER_SCENARIOS[idx] if idx is not None else "random"
-        print(f"--- Trace {i + 1}/{args.traces} | Scenario {idx}: {scenario_label[:60]} ---")
 
-        if args.quiet:
-            on_message = None
-        else:
-            def on_message(role, content):
-                prefix = "  [Customer]" if role == "customer" else "  [Agent]   "
-                print(f"{prefix} {content[:200]}")
+    if parallel and args.traces > 1:
+        workers = min(max_workers, args.traces)
+        print(f"Initializing parallel simulation ({workers} workers, {args.traces} traces)...\n")
 
-        trace_ids = shop.run_conversation(scenario_index=idx, on_message=on_message)
-        all_trace_ids.extend(trace_ids)
-        print(f"  Trace IDs: {trace_ids}\n")
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            futures = {}
+            for i in range(args.traces):
+                idx = pick_scenario_index(scenario_mode, scenario_index, i)
+                future = executor.submit(
+                    _run_single_trace, i, args.traces, idx, args.quiet,
+                )
+                futures[future] = i
 
-    print(f"=== Simulation complete: {len(all_trace_ids)} trace(s) generated ===")
+            for future in as_completed(futures):
+                trace_ids = future.result()
+                all_trace_ids.extend(trace_ids)
+    else:
+        from .coffee_shop import CoffeeShop
+
+        print("Initializing coffee shop...")
+        shop = CoffeeShop()
+        shop.open_shop()
+        print(f"Coffee shop is open. Running {args.traces} trace(s).\n")
+
+        for i in range(args.traces):
+            idx = pick_scenario_index(scenario_mode, scenario_index, i)
+            scenario_label = CUSTOMER_SCENARIOS[idx] if idx is not None else "random"
+            print(f"--- Trace {i + 1}/{args.traces} | Scenario {idx}: {scenario_label[:60]} ---")
+
+            if args.quiet:
+                on_message = None
+            else:
+                def on_message(role, content):
+                    prefix = "  [Customer]" if role == "customer" else "  [Agent]   "
+                    print(f"{prefix} {content[:200]}")
+
+            trace_ids = shop.run_conversation(scenario_index=idx, on_message=on_message)
+            all_trace_ids.extend(trace_ids)
+            print(f"  Trace IDs: {trace_ids}\n")
+
+    print(f"\n=== Simulation complete: {len(all_trace_ids)} trace(s) generated ===")
 
     if args.export_logs:
+        from .trace_processing import TraceProcessor
+
         print("\nExporting event logs...")
         processor = TraceProcessor()
         processor.process_all_traces()
