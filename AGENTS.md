@@ -9,7 +9,7 @@ SAP TechEd 2025 hands-on session (BTM161): a multi-agent coffee shop system that
 - **Python 3.13+** with Poetry (primary) or pip
 - **LangGraph + LangGraph Swarm** — multi-agent orchestration
 - **LangChain < 1.0.0** — LLM provider abstraction
-- **Ollama** (default LLM runtime, model: `ministral-3:14b`)
+- **Ollama** (default LLM runtime, model: `ministral-3:14b`) or **Anthropic** via Hyperspace AI proxy
 - **MLflow** — experiment tracking and OpenTelemetry tracing
 - **Jupyter Notebook + ipywidgets** — interactive UI
 - **Pandas** — event log processing
@@ -22,6 +22,7 @@ SAP TechEd 2025 hands-on session (BTM161): a multi-agent coffee shop system that
 ├── 3_Extending_agentic_coffee_shop.ipynb   # Exercise 3: agent customization
 ├── src/
 │   ├── coffee_shop.py                      # Main CoffeeShop class & Jupyter UI
+│   ├── simulate.py                         # Headless CLI simulation script
 │   ├── styles.py                           # CSS for chat interface
 │   ├── agents/
 │   │   ├── shared_components.py            # Data models, menu, handoff tools
@@ -46,12 +47,15 @@ poetry jupyter install
 pip install -r requirements.txt
 pip install "langchain[ollama]<1.0.0"
 
-# Run
+# Run notebooks
 jupyter notebook
 # Then open notebooks 1–3 in order
+
+# Headless simulation (generate traces without UI)
+poetry run simulate --traces 10 --scenario all --export-logs
 ```
 
-LLM provider is configured in `src/coffee_shop.py` line 24. Default is Ollama; swap to OpenAI/Anthropic by changing the `chat_llm` assignment and installing the corresponding langchain extra.
+LLM provider is configured via a `.env` file (see `.env.example`). Set `LLM_PROVIDER=ollama` (default) or `LLM_PROVIDER=anthropic` for the Hyperspace AI proxy. The factory lives in `src/llm.py`.
 
 ## Key Architecture Notes
 

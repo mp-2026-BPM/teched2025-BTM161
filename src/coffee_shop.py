@@ -8,20 +8,14 @@ from collections import defaultdict
 import ipywidgets as widgets
 import os
 from IPython.display import display, clear_output, HTML
-from langchain_ollama import ChatOllama
-
 from .agents import (
     MENU, inventory_manager,
     create_order_agent, create_inventory_agent,
     create_barista_agent, create_customer_service_agent,
     CustomerAgent, CUSTOMER_SCENARIOS,
 )
+from .llm import chat_llm
 from .styles import ENHANCED_CSS
-
-# CONFIGURE LLM AND REQUIRED CREDENTIALS HERE
-# SEE ALSO: https://github.com/langchain-ai/langgraph/blob/a10a66cbd151c92f89d6476fb70e5e405ce50b98/docs/docs/snippets/chat_model_tabs.md
-# DO NOT FORGET TO ALSO RUN THE RESPECTIVE `pip install -U "langchain[PROVIDER_NAME]"` COMMAND AS STATED IN THE LINKED DOCUMENTATION
-chat_llm = ChatOllama(model="ministral-3:14b")
 
 
 mlflow.langchain.autolog()
@@ -225,54 +219,95 @@ class CoffeeShop():
         """
         display(HTML(scroll_script))
 
+    def _extract_messages(self, stream):
+        """Yield (agent_name, content) tuples from a LangGraph stream, deduplicating messages."""
+        seen_messages = set()
+        for ns, update in stream:
+            for node, node_updates in update.items():
+                if node_updates is None:
+                    continue
+
+                if isinstance(node_updates, (dict, tuple)):
+                    node_updates_list = [node_updates]
+                elif isinstance(node_updates, list):
+                    node_updates_list = node_updates
+                else:
+                    raise ValueError(node_updates)
+
+                for node_updates in node_updates_list:
+                    if isinstance(node_updates, tuple):
+                        continue
+                    messages_key = next(
+                        (k for k in node_updates.keys() if "messages" in k), None
+                    )
+                    if messages_key is not None:
+                        message = node_updates[messages_key][-1]
+                        message_id = f"{getattr(message, 'content', str(message))}_{getattr(message, 'name', 'unknown')}"
+
+                        if message_id not in seen_messages:
+                            seen_messages.add(message_id)
+                            agent_name = getattr(message, 'name', 'unknown')
+                            content = getattr(message, 'content', str(message))
+
+                            if agent_name in ('order_agent', 'barista_agent', 'customer_service_agent') and content:
+                                self._last_agent_message = content
+
+                            yield (agent_name, content)
+
     def _stream_to_output(self, stream, output_widget):
         """Stream conversation to an output widget with enhanced bubble styling"""
-        seen_messages = set()
-        
         with output_widget:
-            for ns, update in stream:
-                for node, node_updates in update.items():
-                    if node_updates is None:
-                        continue
+            for agent_name, content in self._extract_messages(stream):
+                is_important = self._should_show_message_in_silent_mode(agent_name, content)
+                bubble_html = self._format_message_bubble(agent_name, content, is_user=False, is_important=is_important)
+                display(HTML(bubble_html))
+                self._auto_scroll_to_bottom()
 
-                    if isinstance(node_updates, (dict, tuple)):
-                        node_updates_list = [node_updates]
-                    elif isinstance(node_updates, list):
-                        node_updates_list = node_updates
-                    else:
-                        raise ValueError(node_updates)
+    def send_message(self, thread_id, message):
+        """Send a message through the swarm and return the last customer-facing agent response."""
+        config = self._get_config(thread_id)
+        self._last_agent_message = None
 
-                    for node_updates in node_updates_list:
-                        if isinstance(node_updates, tuple):
-                            continue
-                        messages_key = next(
-                            (k for k in node_updates.keys() if "messages" in k), None
-                        )
-                        if messages_key is not None:
-                            message = node_updates[messages_key][-1]
-                            # Create a unique identifier for the message
-                            message_id = f"{getattr(message, 'content', str(message))}_{getattr(message, 'name', 'unknown')}"
-                            
-                            # Only display if we haven't seen this message before
-                            if message_id not in seen_messages:
-                                seen_messages.add(message_id)
+        stream = self.app.stream(
+            {"messages": [{"role": "user", "content": message}]},
+            config,
+            subgraphs=True,
+        )
+        for _agent_name, _content in self._extract_messages(stream):
+            pass
 
-                                # Extract agent name and content
-                                agent_name = getattr(message, 'name', 'unknown')
-                                content = getattr(message, 'content', str(message))
-                                
-                                
-                                is_important = self._should_show_message_in_silent_mode(agent_name, content)
-                                # Display the message bubble
-                                bubble_html = self._format_message_bubble(agent_name, content, is_user=False, is_important=is_important)
-                                display(HTML(bubble_html))
-                                # Track last customer-facing agent message for the customer agent
-                                if agent_name in ('order_agent', 'barista_agent', 'customer_service_agent') and content:
-                                    self._last_agent_message = content
-                                # Auto-scroll to bottom after displaying message
-                                self._auto_scroll_to_bottom()
-                        else:
-                            pass
+        trace_id = mlflow.get_last_active_trace_id()
+        self.traces_of_latest_conversations.append(trace_id)
+
+        return self._last_agent_message
+
+    def run_conversation(self, scenario_index=None, on_message=None):
+        """Run a full automated conversation using the CustomerAgent.
+
+        Returns the list of trace IDs collected during this conversation.
+        """
+        inventory_manager.reset()
+        self.customer_agent.reset(scenario_index)
+        thread_id = str(uuid.uuid4())
+        trace_start = len(self.traces_of_latest_conversations)
+
+        message = self.customer_agent.get_initial_message()
+        if on_message:
+            on_message("customer", message)
+
+        while message:
+            agent_reply = self.send_message(thread_id, message)
+            if on_message and agent_reply:
+                on_message("agent", agent_reply)
+
+            if not agent_reply:
+                break
+
+            message = self.customer_agent.respond_to(agent_reply)
+            if on_message and message:
+                on_message("customer", message)
+
+        return self.traces_of_latest_conversations[trace_start:]
 
     def _set_processing_status(self, is_processing=True):
         """Update the status indicator to show processing or ready state"""

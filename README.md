@@ -42,6 +42,47 @@ The session contains three exercises in the form of Juypter notebooks, which are
 2. Exercise [`2_Exceptions_agentic_coffee_shop`](2_Exceptions_agentic_coffee_shop.ipynb). This exercise is about exploring the behavior of the agents in case of errors and when experiencing edge cases. This will lead to several process variants by agents and shows how to analyze their differences over time.
 3. Exercise [`3_Extending_agentic_coffee_shop`](3_Extending_agentic_coffee_shop.ipynb). This exercise is for experimenting with the agents' definitions in order to change their behavior, for example, by changing their instructions and the available tools. With the help of SAP Signavio Process Intelligence, you will find out how this tool can support you in monitoring a multi-agent system during development. 
 
+## Headless Simulation
+
+You can generate traces in bulk without the Jupyter UI using the `simulate` CLI command. This runs the Customer Agent against the coffee shop swarm and captures MLflow traces for each conversation.
+
+### Usage
+
+```bash
+# Run a single trace with a random scenario
+poetry run simulate
+
+# Run 10 traces cycling through all 4 scenarios
+poetry run simulate --traces 10 --scenario all
+
+# Run 5 traces with a specific scenario (index 0-3)
+poetry run simulate --traces 5 --scenario 2
+
+# Run with minimal output (no message content)
+poetry run simulate --traces 10 --quiet
+
+# Export event logs after simulation
+poetry run simulate --traces 10 --scenario all --export-logs
+```
+
+### Arguments
+
+| Argument | Default | Description |
+|---|---|---|
+| `--traces N` | `1` | Number of conversation traces to run |
+| `--scenario` | `random` | Scenario index (`0`–`3`), `all` (round-robin), or `random` |
+| `--export-logs` | off | Generate event log CSV after simulation |
+| `--quiet` | off | Minimal output: only trace numbers, scenarios, and summary |
+
+### Available Scenarios
+
+| Index | Description |
+|---|---|
+| 0 | Order a large latte and a croissant (friendly) |
+| 1 | Order 2 espressos (in a hurry) |
+| 2 | Complain about a cold cappuccino and seek resolution |
+| 3 | Ask for a recommendation and order based on suggestion |
+
 ## Agent Architecture
 
 ### 🛒 Order Agent
