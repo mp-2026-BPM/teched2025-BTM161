@@ -7,6 +7,7 @@ from .shared_components import (
     MENU, Order, OrderItem,
     transfer_to_inventory, transfer_to_customer_service
 )
+from ..llm import bind_tools_sequential
 import json
 from dataclasses import asdict
 
@@ -118,7 +119,7 @@ def create_order_agent(chat_llm, prompt=None):
 
     tools = [process_order, calculate_total, transfer_to_inventory, transfer_to_customer_service]
 
-    llm_with_tools = chat_llm.bind_tools(tools)
+    llm_with_tools = bind_tools_sequential(chat_llm, tools)
 
     return create_react_agent(
         model=llm_with_tools,

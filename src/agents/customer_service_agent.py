@@ -3,6 +3,7 @@ from langchain_core.tools import tool
 from .shared_components import (
     transfer_to_order_agent, transfer_to_barista, transfer_to_inventory, OrderInputSchema, Order
 )
+from ..llm import bind_tools_sequential
 from pydantic import BaseModel, Field
 from dataclasses import asdict
 import json
@@ -60,7 +61,7 @@ def create_customer_service_agent(chat_llm, prompt=None):
 
     tools = [offer_refund, offer_partial_refund, transfer_to_order_agent, transfer_to_barista, transfer_to_inventory]
 
-    llm_with_tools = chat_llm.bind_tools(tools)
+    llm_with_tools = bind_tools_sequential(chat_llm, tools)
 
     return create_react_agent(
         model=llm_with_tools,

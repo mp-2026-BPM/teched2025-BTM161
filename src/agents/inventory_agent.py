@@ -7,6 +7,7 @@ from .shared_components import (
     inventory_manager, MENU, Order, OrderInputSchema,
     transfer_to_barista, transfer_to_customer_service
 )
+from ..llm import bind_tools_sequential
 
 
 # INVENTORY AGENT TOOLS
@@ -132,7 +133,7 @@ def create_inventory_agent(chat_llm, prompt=None):
     tools = [check_inventory, update_stock, get_alternatives,
              transfer_to_barista, transfer_to_customer_service]
 
-    llm_with_tools = chat_llm.bind_tools(tools)
+    llm_with_tools = bind_tools_sequential(chat_llm, tools)
 
     return create_react_agent(
         model=llm_with_tools,
