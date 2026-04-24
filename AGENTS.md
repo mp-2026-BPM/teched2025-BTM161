@@ -70,6 +70,10 @@ LLM provider is configured via a `.env` file (see `.env.example`). Set `LLM_PROV
 New branches follow: `<two-initials>/<feature-description-with-dashes>`
 Example: `al/add-login-page`
 
+## Merging
+
+Squash branches before merging into `main` so each merged change is a single commit — keeps history linear and makes reverts straightforward.
+
 ## Code Conventions
 
 - Agent tools follow the pattern: `@tool(args_schema=Schema)` with docstrings (required by LangChain)
