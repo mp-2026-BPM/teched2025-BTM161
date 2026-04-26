@@ -20,6 +20,29 @@ _ITEM_LINE_RE = re.compile(
     re.MULTILINE,
 )
 
+PRODUCT_CATALOG = {
+    "sweets": {
+        "muffin": ["muffin", "muffins"],
+        "croissant": ["croissant", "croissants"],
+    },
+    "coffee": {
+        "latte": ["latte", "lattes", "milchkaffee"],
+        "cappuccino": ["cappuccino", "cappuccinos", "cappuccino"],
+        "black_coffee": ["black coffee", "americano", "schwarzer kaffee", "kaffee schwarz"],
+    },
+    "other drinks": {
+        "matcha" : ["matcha"],
+        "tee": ["tee", "chai"],
+        "water": ["water", "wasser"],
+        "soft drinks": ["cola", "Spezi", "mate", "club-mate"]
+    }
+}
+
+MODIFIERS = {
+    "almond_milk": ["almond milk", "mandelmilch"],
+    "lactose_free": ["lactose-free", "lactose free", "without lactose", "laktosefrei", "ohne laktose"],
+}
+
 @dataclass
 class ObjectCentricEventlog:
     """
@@ -76,25 +99,43 @@ def _extract_order_id(text: str) -> str | None:
     return None
 
 
-def _extract_order_items(text: str) -> list[str]:
+def _extract_order_items(text: str) -> list[dict]:
     """
-    Return a list of item description strings parsed from a markdown message.
-    Example line: '- **Large Latte** – $4.75'  →  'Large Latte'
+    Extract order items from free-text messages using a small product catalog.
     """
-    items = []
-    for m in _ITEM_LINE_RE.finditer(text):
-        qty_prefix = (m.group(1) or "").strip()
-        item_name = m.group(2).strip().rstrip("-").strip()
-        if qty_prefix:
-            # "2 Large Lattes" → emit two separate items
-            try:
-                qty = int(qty_prefix)
-                items.extend([item_name] * qty)
-            except ValueError:
-                items.append(item_name)
-        else:
-            items.append(item_name)
-    return items
+    if not isinstance(text, str):
+        return []
+
+    text_lower = text.lower()
+    found_items = []
+
+    found_modifiers = []
+    for modifier_id, aliases in MODIFIERS.items():
+        if any(alias in text_lower for alias in aliases):
+            found_modifiers.append(modifier_id)
+
+    for category, products in PRODUCT_CATALOG.items():
+        for product_id, aliases in products.items():
+            if any(alias in text_lower for alias in aliases):
+                quantity = 1
+                # looks for patterns like "2 large lattes", "1 croissant"
+                for alias in aliases:
+                    pattern = rf"(\d+)\s+(?:large\s+|small\s+|medium\s+)?{re.escape(alias)}"
+                    match = re.search(pattern, text_lower)
+                    if match:
+                        quantity = int(match.group(1))
+                        break
+
+                for _ in range(quantity):
+                    found_items.append({
+                        "product_id": product_id,
+                        "category": category,
+                        "modifiers": found_modifiers if category == "coffee" else [],
+                    })
+
+    return found_items
+
+
 
 
 def convert_to_ocel(el: pd.DataFrame) -> ObjectCentricEventlog:
@@ -202,10 +243,14 @@ def convert_to_ocel(el: pd.DataFrame) -> ObjectCentricEventlog:
         _add_object(oid=order_id, otype="Order", case_id=case_id)
 
     for order_id, items in order_items.items():
-        for idx, item_name in enumerate(items, start=1):
+        for idx, item in enumerate(items, start=1):
             item_oid = f"{order_id}_item_{idx}"
-            _add_object(oid=item_oid, otype="OrderItem",
-                        order_id=order_id, item_name=item_name)
+            _add_object(oid=item_oid, 
+                        otype="OrderItem",
+                        order_id=order_id, 
+                        product_id=item["product_id"],
+                        category=item["category"],
+                        modifiers=", ".join(item["modifiers"]))
 
     objects_df = pd.DataFrame(object_rows)
 
@@ -345,7 +390,7 @@ def convert_to_ocel(el: pd.DataFrame) -> ObjectCentricEventlog:
         columns=["_case_id", "_resource", "_raw_message"], errors="ignore"
     )
 
-    return ObjectCentricEventlog(events=events_df, objects=objects, events_to_objects=e2o_df)
+    return ObjectCentricEventlog(events=events_df, objects=objects_df, events_to_objects=e2o_df) #objects=objects_df?
 
 
 def load_and_convert(csv_path: str) -> ObjectCentricEventlog:
