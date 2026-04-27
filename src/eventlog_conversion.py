@@ -123,7 +123,13 @@ class ObjectCentricEventlog:
             .drop_nulls()
         )
 
-        object_object = pl.DataFrame #TODO
+        object_object = pl.DataFrame(
+            schema={
+                "ocel_source_id": str,
+                "ocel_target_id": str,
+                "ocel_qualifier": str,
+            }
+        )
 
         event_map_type = (
             events.select("ocel_type").unique()
