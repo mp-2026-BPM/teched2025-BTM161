@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from .shared_components import (
     transfer_to_customer_service, OrderInputSchema, Order
 )
+from ..llm import bind_tools_sequential
 from dataclasses import asdict
 
 class RemakeDrinkInputSchema(BaseModel):
@@ -87,7 +88,7 @@ def create_barista_agent(chat_llm, prompt=None):
 
     tools = [prepare_order, remake_order_item, estimate_prep_time, transfer_to_customer_service]
 
-    llm_with_tools = chat_llm.bind_tools(tools)
+    llm_with_tools = bind_tools_sequential(chat_llm, tools)
 
     return create_react_agent(
         model=llm_with_tools,
