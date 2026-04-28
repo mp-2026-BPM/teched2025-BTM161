@@ -9,7 +9,9 @@ EVENT_ATTRIBUTES = {
     "prepare_order": ["ocel_time", "duration"] ,
     "estimate_prep_time": ["ocel_time", "duration"],
     "process_order": ["ocel_time", "duration"],
-    "check_inventory": ["ocel_time", "duration"]
+    "check_inventory": ["ocel_time", "duration"],
+    "update_stock": ["ocel_time", "duration"],
+    "get_order": ["ocel_time", "duration"]
 }
 
 OBJECT_ATTRIBUTES = {
@@ -32,29 +34,6 @@ class ObjectCentricEventlog:
     object_map_type: pl.DataFrame
     event_tables: dict[str, pl.DataFrame]
     object_tables: dict[str, pl.DataFrame]
-
-    # def events_of_type(self, event_type: str) -> pd.DataFrame:
-    #     return self.events[self.events["ocel:type"] == event_type]
-
-    # def objects_of_type(self, object_type: str) -> pd.DataFrame:
-    #     return self.objects[self.objects["ocel:type"] == object_type]
-
-    # def objects_for_event(self, eid: str) -> pd.DataFrame:
-    #     oids = self.event_object[self.event_object["ocel:eid"] == eid]["ocel:oid"]
-    #     return self.objects[self.objects["ocel:oid"].isin(oids)]
-
-    # def events_for_object(self, oid: str) -> pd.DataFrame:
-    #     eids = self.event_object[self.event_object["ocel:oid"] == oid]["ocel:eid"]
-    #     return self.events[self.events["ocel:eid"].isin(eids)]
-
-    # def summary(self) -> str:
-    #     lines = [
-    #         "=== OCEL 2.0 Summary ===",
-    #         f"  Events  : {len(self.events)} total  |  types: {sorted(self.events['ocel:type'].unique())}",
-    #         f"  Objects : {len(self.objects)} total  |  types: {sorted(self.objects['ocel:type'].unique())}",
-    #         f"  E2O     : {len(self.event_object)} relations",
-    #     ]
-    #     return "\n".join(lines)
 
     @classmethod
     def from_eventlog(cls, eventlog: str | pl.DataFrame) -> "ObjectCentricEventlog":
