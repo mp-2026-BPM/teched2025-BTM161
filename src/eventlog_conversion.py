@@ -28,6 +28,10 @@ OBJECT_ATTRIBUTES = {
     "user": [],
     "prompt": ["message"],
     "response": ["message"],
+    "order_agent": [],
+    "barista_agent": [],
+    "inventory_agent": [],
+    "customer_service_agent": [],
 }
 
 @dataclass
@@ -60,11 +64,14 @@ class ObjectCentricEventlog:
 
         el_enriched = (
             eventlog.with_columns(
-                object_type_agent=pl.when(pl.col("org:resource").str.contains("agent")).then(pl.lit("agent")).otherwise(pl.lit("user")),
                 object_type_message=(
                     pl.when(pl.col("concept:instance") == "prompt").then(pl.col("concept:instance"))
                     .when((pl.col("concept:name") == "call_llm") & (pl.col("message").is_not_null())).then(pl.lit("response"))
                     .otherwise(pl.lit(None))),
+                object_id_agent=pl.when(pl.col("org:resource").str.contains("agent")).then(pl.col("case_id") + pl.lit("_") + pl.col("org:resource")).otherwise(pl.col("case_id")),
+                object_type_agent=pl.col("org:resource"),
+                object_type_prompt=pl.when(pl.col("concept:instance") == "prompt").then(pl.col("concept:instance")).otherwise(pl.lit(None)),
+                object_id_prompt=pl.when(pl.col("concept:instance") == "prompt").then(pl.lit("prompt_") + pl.col("identity:id")).otherwise(pl.lit(None)),
                 event_id=pl.col("identity:id"),
                 event_type=pl.when((pl.col("concept:name") == "execute_tool") & pl.col("tool").is_not_null()).then(pl.col("tool")).otherwise(pl.col("concept:name")),
                 ocel_time=pl.col("time_finished").str.to_datetime()
@@ -74,7 +81,6 @@ class ObjectCentricEventlog:
                     pl.when(pl.col("object_type_message") == "prompt").then(pl.lit("prompt_") + pl.col("identity:id"))
                     .when(pl.col("object_type_message") == "response").then(pl.lit("response_") + pl.col("identity:id"))
                     .otherwise(pl.lit(None))),
-                object_id_agent=pl.when(pl.col("object_type_agent") == "agent").then(pl.col("org:resource")).otherwise(pl.col("case_id")),
             )
         )
 
