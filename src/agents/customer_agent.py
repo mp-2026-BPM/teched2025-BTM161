@@ -16,7 +16,7 @@ class CustomerAgent:
         self.llm = llm
         self.history = []
         self.scenario = CUSTOMER_SCENARIOS[0]
-        self.max_turns = 8
+        self.max_turns = 15
         self.turn_count = 0
 
     def reset(self, scenario_index=None):

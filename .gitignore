@@ -17,3 +17,7 @@ dev.ipynb
 
 # Environment configuration
 .env
+# SQLite database
+*.db
+*.db-wal
+*.db-shm
