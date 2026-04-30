@@ -26,7 +26,8 @@ EVENT_ATTRIBUTES = {
 OBJECT_ATTRIBUTES = {
     "agent": [],
     "user": [],
-    "prompt": ["message"] 
+    "prompt": ["message"],
+    "response": ["message"],
 }
 
 @dataclass
@@ -59,13 +60,21 @@ class ObjectCentricEventlog:
 
         el_enriched = (
             eventlog.with_columns(
-                object_id_agent=pl.when(pl.col("org:resource").str.contains("agent")).then(pl.col("org:resource")).otherwise(pl.col("case_id")),
                 object_type_agent=pl.when(pl.col("org:resource").str.contains("agent")).then(pl.lit("agent")).otherwise(pl.lit("user")),
-                object_type_prompt=pl.when(pl.col("concept:instance") == "prompt").then(pl.col("concept:instance")).otherwise(pl.lit(None)),
-                object_id_prompt=pl.when(pl.col("concept:instance") == "prompt").then(pl.lit("prompt_") + pl.col("identity:id")).otherwise(pl.lit(None)),
+                object_type_message=(
+                    pl.when(pl.col("concept:instance") == "prompt").then(pl.col("concept:instance"))
+                    .when((pl.col("concept:name") == "call_llm") & (pl.col("message").is_not_null())).then(pl.lit("response"))
+                    .otherwise(pl.lit(None))),
                 event_id=pl.col("identity:id"),
                 event_type=pl.when((pl.col("concept:name") == "execute_tool") & pl.col("tool").is_not_null()).then(pl.col("tool")).otherwise(pl.col("concept:name")),
                 ocel_time=pl.col("time_finished").str.to_datetime()
+            )
+            .with_columns(
+                object_id_message=(
+                    pl.when(pl.col("object_type_message") == "prompt").then(pl.lit("prompt_") + pl.col("identity:id"))
+                    .when(pl.col("object_type_message") == "response").then(pl.lit("response_") + pl.col("identity:id"))
+                    .otherwise(pl.lit(None))),
+                object_id_agent=pl.when(pl.col("object_type_agent") == "agent").then(pl.col("org:resource")).otherwise(pl.col("case_id")),
             )
         )
 
@@ -78,8 +87,8 @@ class ObjectCentricEventlog:
                         pl.col("object_type_agent").alias("ocel_type"),
                     ),
                     pl.struct(
-                        pl.col("object_id_prompt").alias("ocel_id"),
-                        pl.col("object_type_prompt").alias("ocel_type"),
+                        pl.col("object_id_message").alias("ocel_id"),
+                        pl.col("object_type_message").alias("ocel_type"),
                     ),
                 ])
             )
@@ -101,10 +110,10 @@ class ObjectCentricEventlog:
             .select(
                 ocel_event_id=pl.col("event_id"),
                 ocel_object_id=pl.concat_list([
-                    pl.col("object_id_agent"), pl.col("object_id_prompt")
+                    pl.col("object_id_agent"), pl.col("object_id_message")
                 ]),
                 ocel_qualifier=pl.concat_list([
-                    pl.col("object_type_agent"), pl.col("object_type_prompt")
+                    pl.col("object_type_agent"), pl.col("object_type_message")
                 ])
             )
             .explode("ocel_object_id", "ocel_qualifier")
@@ -148,7 +157,7 @@ class ObjectCentricEventlog:
         object_tables = {}
         for obj_type in object_map_type["ocel_type"].to_list():
             attrs = OBJECT_ATTRIBUTES[obj_type]
-            column_id = "object_id_prompt" if obj_type == "prompt" else "object_id_agent"
+            column_id = "object_id_message" if (obj_type == "prompt" or obj_type == "response") else "object_id_agent"
             obj_type_tbl = (
                 objects
                 .filter(pl.col("ocel_type") == obj_type)
