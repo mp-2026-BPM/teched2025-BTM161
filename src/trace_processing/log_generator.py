@@ -1,21 +1,25 @@
 import json
-import json
 import uuid
 import pandas as pd
 
 
 class LogGenerator:
-    def generate_event_log_df(self, tracefile_path: str) -> pd.DataFrame:
+    def generate_event_log_df(self, trace_source) -> pd.DataFrame:
         self.process_events = []
         self.case_id = None
         self.spans = None
         self.langgraph_root_span = None
-        
-        try:
-            with open(tracefile_path, 'r') as f:
-                trace_data = json.load(f)
-        except Exception as e:
-            raise Exception(f'Error loading trace file {tracefile_path}: {e}')
+
+        if isinstance(trace_source, str):
+            try:
+                with open(trace_source, 'r') as f:
+                    trace_data = json.load(f)
+            except Exception as e:
+                raise Exception(f'Error loading trace file {trace_source}: {e}')
+        elif isinstance(trace_source, dict):
+            trace_data = trace_source
+        else:
+            raise ValueError(f'Expected file path (str) or trace data (dict), got {type(trace_source)}')
 
         if 'spans' in trace_data:
             self.spans = trace_data['spans']

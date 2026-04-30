@@ -83,6 +83,10 @@ poetry run simulate --traces 10 --scenario all --export-logs
 | 2 | Complain about a cold cappuccino and seek resolution |
 | 3 | Ask for a recommendation and order based on suggestion |
 
+## Observing the Database
+
+Orders and inventory are persisted in a local SQLite database (`coffee_shop.db`). To inspect the database while the agents are running, install the [SQLite Viewer](https://marketplace.visualstudio.com/items?itemName=qwtel.sqlite-viewer) extension in VS Code. Once installed, simply open `coffee_shop.db` from the file explorer and the extension will display the tables in a browsable grid view. You can refresh the view at any time to see the latest orders and stock levels as they are updated by the agents during a simulation.
+
 ## Agent Architecture
 
 ### 🛒 Order Agent

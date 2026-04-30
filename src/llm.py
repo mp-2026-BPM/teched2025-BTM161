@@ -39,15 +39,32 @@ def _create_chat_llm():
 chat_llm = _create_chat_llm()
 
 
-def bind_tools_sequential(llm, tools):
-    """bind_tools, disabling parallel tool calls where the provider supports it.
+def _strip_handoff_from_parallel(message):
+    """If the LLM emits a handoff tool call alongside other tool calls,
+    drop the handoff so the real tools execute first.  The LLM will
+    re-issue the handoff on its next turn once it sees the tool results."""
+    if not hasattr(message, "tool_calls") or len(message.tool_calls) <= 1:
+        return message
+    handoff = [tc for tc in message.tool_calls if tc["name"].startswith("transfer_to_")]
+    non_handoff = [tc for tc in message.tool_calls if not tc["name"].startswith("transfer_to_")]
+    if handoff and non_handoff:
+        message.tool_calls = non_handoff
+    return message
 
-    ChatAnthropic accepts ``parallel_tool_calls=False``; ChatOllama forwards
-    the kwarg to its underlying client, which raises TypeError at invoke time.
+
+def bind_tools_sequential(llm, tools):
+    """bind_tools with parallel-call mitigation.
+
+    ChatAnthropic accepts ``parallel_tool_calls=False``; ChatOllama does not.
+    For all providers we also apply a defensive post-processor that strips
+    handoff calls when they co-occur with other tool calls, since a handoff
+    alongside real tool calls would cause the swarm to skip execution.
     """
     if type(llm).__name__ == "ChatOllama":
-        return llm.bind_tools(tools)
-    return llm.bind_tools(tools, parallel_tool_calls=False)
+        bound = llm.bind_tools(tools)
+    else:
+        bound = llm.bind_tools(tools, parallel_tool_calls=False)
+    return bound | _strip_handoff_from_parallel
 
 
 def normalize_content(content):

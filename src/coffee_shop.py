@@ -6,10 +6,10 @@ import json
 import html
 from collections import defaultdict
 import ipywidgets as widgets
-import os
 from IPython.display import display, clear_output, HTML
+from src.llm import normalize_content
 from .agents import (
-    MENU, inventory_manager,
+    init_db, reset_inventory, set_item_stock, get_all_inventory,
     create_order_agent, create_inventory_agent,
     create_barista_agent, create_customer_service_agent,
     CustomerAgent, CUSTOMER_SCENARIOS,
@@ -77,7 +77,8 @@ class CoffeeShop():
     def open_shop(self):
         """Start the coffee shop application after potentially updating agent definitions"""
 
-        inventory_manager.reset()
+        init_db()
+        reset_inventory()
 
         self.customer_agent = CustomerAgent(chat_llm)
 
@@ -104,23 +105,23 @@ class CoffeeShop():
 
 
     def _format_content_for_display(self, content):
+        content = normalize_content(content)
         try:
             parsed_json = json.loads(content)
             formatted_json = json.dumps(parsed_json, indent=2, ensure_ascii=False)
             return f'<div class="tool-output"><div class="tool-output-label">Output:</div><pre class="tool-output-code">{html.escape(formatted_json)}</pre></div>'
         except (json.JSONDecodeError, TypeError):
             pass
-                    
+
         # Regular string - escape HTML
         return html.escape(content)
 
     def _should_show_message_in_silent_mode(self, agent_name, content):
         """Determine if a message should be shown in silent mode"""
-        
-        user_facing_agents = ['order_agent', 'customer_service_agent', 'barista_agent']
+
         if agent_name in self.agent_config.keys():
             return True
-        
+
         return False
         
 
@@ -250,7 +251,7 @@ class CoffeeShop():
                             content = getattr(message, 'content', str(message))
 
                             if agent_name in ('order_agent', 'barista_agent', 'customer_service_agent') and content:
-                                self._last_agent_message = content
+                                self._last_agent_message = normalize_content(content)
 
                             yield (agent_name, content)
 
@@ -286,7 +287,7 @@ class CoffeeShop():
 
         Returns the list of trace IDs collected during this conversation.
         """
-        inventory_manager.reset()
+        reset_inventory()
         self.customer_agent.reset(scenario_index)
         thread_id = str(uuid.uuid4())
         trace_start = len(self.traces_of_latest_conversations)
@@ -678,8 +679,7 @@ class CoffeeShop():
     
     def _on_restock_clicked(self, button):
         """Handle restock button click"""
-        # Use the inventory_manager's reset method
-        inventory_manager.reset()
+        reset_inventory()
         
         # Show enhanced confirmation message in output
         with self.output:
@@ -706,7 +706,7 @@ class CoffeeShop():
             inventory_html += '<h5 style="margin: 0 0 10px 0; color: #495057;">📦 Current Inventory Levels:</h5>'
             inventory_html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">'
             
-            for item_key, item in inventory_manager.inventory.items():
+            for item_key, item in get_all_inventory().items():
                 inventory_html += f"""
                 <div style="
                     background: white;
@@ -743,7 +743,7 @@ class CoffeeShop():
             ]
             # Modify inventory for the inventory issue scenario
             if scenario == 1:
-                inventory_manager.inventory['muffin'].stock = 0
+                set_item_stock('muffin', 0)
                 with self.output:
                     restock_html = """
                     <div class="chat-notification">
@@ -753,7 +753,8 @@ class CoffeeShop():
                     display(HTML(restock_html))
                 self.display_current_inventory()
             else:
-                if inventory_manager.inventory['muffin'].stock == 0:
+                inventory = get_all_inventory()
+                if inventory.get('muffin') and inventory['muffin'].stock == 0:
                     with self.output:
                         restock_html = """
                         <div class="chat-notification">
@@ -761,7 +762,7 @@ class CoffeeShop():
                         </div>
                         """
                         display(HTML(restock_html))
-                    inventory_manager.inventory['muffin'].stock = 12
+                    set_item_stock('muffin', 12)
 
         self.text_input.value = scenarios[scenario]
         self._on_send_button_clicked(None)
