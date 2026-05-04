@@ -61,6 +61,9 @@ poetry run simulate --traces 5 --scenario 2
 # Run with minimal output (no message content)
 poetry run simulate --traces 10 --quiet
 
+# Run with debug logging enabled
+poetry run simulate --traces 5 --log-level debug
+
 # Export event logs after simulation
 poetry run simulate --traces 10 --scenario all --export-logs
 ```
@@ -73,6 +76,7 @@ poetry run simulate --traces 10 --scenario all --export-logs
 | `--scenario` | `random` | Scenario index (`0`–`3`), `all` (round-robin), or `random` |
 | `--export-logs` | off | Generate event log CSV after simulation |
 | `--quiet` | off | Minimal output: only trace numbers, scenarios, and summary |
+| `--log-level` | `warning` | Set the logging level for agent diagnostics (`debug`, `info`, `warning`, `error`) |
 
 ### Available Scenarios
 

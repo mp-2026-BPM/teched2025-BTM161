@@ -1,8 +1,11 @@
 from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
+import logging
 import random
 import json
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("coffee_shop.barista_agent")
 
 from src.llm import bind_tools_sequential
 
@@ -42,10 +45,12 @@ def prepare_order(order_id: str) -> str:
     if preparation_success:
         order.status = OrderStatus.COMPLETED
         prep_report += "\nAll items prepared successfully!"
+        logger.debug("Order %s prepared successfully", order_id)
     else:
         order.status = OrderStatus.PREPARATION_ERROR
         failed_item = random.choice(order.items)
         prep_report += f"\nError preparing {failed_item.name.title()}"
+        logger.debug("Order %s preparation failed on %s", order_id, failed_item.name)
 
     save_order(order)
     return json.dumps({"order_id": order_id, "status": order.status.value, "summary": prep_report})
@@ -66,12 +71,14 @@ def remake_order_item(order_id: str, item_name: str) -> str:
             if remake_success:
                 order.status = OrderStatus.COMPLETED
                 save_order(order)
+                logger.debug("Remade %s for order %s successfully", item_name, order_id)
                 return json.dumps({
                     "order_id": order_id,
                     "status": OrderStatus.COMPLETED.value,
                     "summary": f"Successfully remade {item_name.title()} for order {order_id}.",
                 })
             else:
+                logger.debug("Remake of %s for order %s failed", item_name, order_id)
                 return json.dumps({
                     "order_id": order_id,
                     "status": order.status.value,

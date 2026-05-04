@@ -1,8 +1,11 @@
 from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
+import logging
 import json
 from pydantic import BaseModel, Field
 from typing import Optional
+
+logger = logging.getLogger("coffee_shop.order_agent")
 
 from .shared_components import (
     MENU, Order, OrderItem, Size, ALLOWED_EXTRAS,
@@ -73,6 +76,7 @@ def process_order(order: list[CustomerOrderItemSchema], customer) -> str:
             total += price
 
         if unknown_items:
+            logger.debug("Unknown items in order: %s", ", ".join(unknown_items))
             return f"Error processing order.\nItems not on menu: {', '.join(unknown_items)}\nAvailable items: {', '.join(MENU.keys())}"
 
         current_order = Order(total=total, customer=customer, items=ordered_items)
@@ -103,6 +107,8 @@ def calculate_total(order_id: str, discount_percent: int = 0) -> str:
     final_total = original_total - discount_amount
     order.total = final_total
     save_order(order)
+    if discount_percent > 0:
+        logger.debug("Discount %d%% applied to %s: $%.2f -> $%.2f", discount_percent, order_id, original_total, final_total)
 
     result = f"Order {order.order_id_str} total: ${original_total:.2f}"
     if discount_percent > 0:

@@ -1,5 +1,9 @@
 from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
+import logging
+
+logger = logging.getLogger("coffee_shop.customer_service_agent")
+
 from .shared_components import (
     transfer_to_order_agent, transfer_to_barista, transfer_to_inventory,
     OrderIdSchema, OrderStatus,
@@ -28,6 +32,7 @@ def offer_refund(order_id: str) -> str:
     order.status = OrderStatus.REFUNDED
     order.total = 0.0
     save_order(order)
+    logger.debug("Full refund $%.2f for %s", refund_amount, order_id)
 
     return json.dumps({
         "order_id": order_id,
@@ -50,6 +55,7 @@ def offer_partial_refund(order_id: str, refund_percent: int = 50) -> str:
     final_total = original_total - discount_amount
     order.total = final_total
     save_order(order)
+    logger.debug("Partial refund %d%% ($%.2f) for %s, new total $%.2f", refund_percent, discount_amount, order_id, final_total)
 
     return json.dumps({
         "order_id": order_id,
