@@ -1,6 +1,9 @@
 from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
+import logging
 import json
+
+logger = logging.getLogger("coffee_shop.inventory_agent")
 
 from .shared_components import (
     OrderIdSchema, OrderStatus,
@@ -29,6 +32,10 @@ def check_inventory(order_id: str) -> str:
     new_status = OrderStatus.INVENTORY_CONFIRMED if report["all_available"] else OrderStatus.INVENTORY_ISSUES
     order.status = new_status
     save_order(order)
+    if report["all_available"]:
+        logger.debug("Inventory check passed for %s", order_id)
+    else:
+        logger.debug("Inventory issues for %s: %s", order_id, ", ".join(report["unavailable_items"]))
 
     summary = f"Order {order_id}: {new_status}."
     if not report["all_available"]:

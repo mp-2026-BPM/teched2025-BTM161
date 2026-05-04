@@ -1,21 +1,34 @@
-from langgraph_swarm import create_swarm
-from langgraph.checkpoint.memory import InMemorySaver
+import logging
 import mlflow
 import uuid
 import json
 import html
 from collections import defaultdict
+
+from langgraph_swarm import create_swarm
+from langgraph.checkpoint.memory import InMemorySaver
 import ipywidgets as widgets
 from IPython.display import display, clear_output, HTML
-from src.llm import normalize_content
-from .agents import (
+
+from src.llm import normalize_content, chat_llm
+from src.styles import ENHANCED_CSS
+
+# Configure the parent logger for the entire coffee_shop namespace.
+# Child loggers (e.g. coffee_shop.handoff) inherit this level and handler.
+_coffee_shop_logger = logging.getLogger("coffee_shop")
+_coffee_shop_logger.setLevel(logging.INFO)
+if not _coffee_shop_logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("[%(levelname)s] %(name)s — %(message)s"))
+    _coffee_shop_logger.addHandler(_handler)
+
+# Import after logger setup so child loggers in src.agents inherit the configured level/handler.
+from src.agents import (  # noqa: E402
     init_db, reset_inventory, set_item_stock, get_all_inventory,
     create_order_agent, create_inventory_agent,
     create_barista_agent, create_customer_service_agent,
     CustomerAgent, CUSTOMER_SCENARIOS,
 )
-from .llm import chat_llm
-from .styles import ENHANCED_CSS
 
 
 mlflow.langchain.autolog()
@@ -518,7 +531,22 @@ class CoffeeShop():
         )
         self.verbose_toggle.add_class('default-button')
         self.verbose_toggle.observe(self._on_verbose_toggle_changed, names='value')
-        
+
+        # Create log level dropdown
+        self.log_level_dropdown = widgets.Dropdown(
+            options=[
+                ('Debug', logging.DEBUG),
+                ('Info', logging.INFO),
+                ('Warning', logging.WARNING),
+                ('Error', logging.ERROR),
+            ],
+            value=logging.INFO,
+            description='Log Level:',
+            style={'description_width': '65px'},
+            layout=widgets.Layout(width='180px'),
+        )
+        self.log_level_dropdown.observe(self._on_log_level_changed, names='value')
+
         # Create enhanced restock button
         self.restock_button = widgets.Button(
             description='🔄 Restock All Items',
@@ -533,6 +561,7 @@ class CoffeeShop():
             self.verbose_toggle,
             self.restock_button,
             self.customer_agent_toggle,
+            self.log_level_dropdown,
             self.customer_scenario_dropdown,
         ])
         controls_buttons.add_class('button-group')
@@ -766,6 +795,10 @@ class CoffeeShop():
 
         self.text_input.value = scenarios[scenario]
         self._on_send_button_clicked(None)
+
+    def _on_log_level_changed(self, change):
+        """Handle log level dropdown changes"""
+        logging.getLogger("coffee_shop").setLevel(change['new'])
 
     def _on_verbose_toggle_changed(self, change):
         """Handle verbose mode toggle changes"""

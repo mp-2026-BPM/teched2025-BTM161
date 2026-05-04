@@ -1,6 +1,9 @@
+import logging
 import threading
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger("coffee_shop.order_store")
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
@@ -63,10 +66,11 @@ def _parse_order_id(order_id: str) -> Optional[int]:
 
 def save_order(order: Order) -> None:
     """Persist an Order (insert or update)."""
-    # may want to check for allowed status transitions here in the futureq
+    # may want to check for allowed status transitions here in the future
+    is_new = order.id is None
     with _write_lock:
         with Session(engine) as session:
-            if order.id is not None:
+            if not is_new:
                 merged = session.merge(order)
                 session.commit()
                 session.refresh(merged)
@@ -76,6 +80,10 @@ def save_order(order: Order) -> None:
                 session.add(order)
                 session.commit()
                 session.refresh(order)
+    if is_new:
+        logger.debug("Order %s created for %s — %d item(s), $%.2f", order.order_id_str, order.customer, len(order.items), order.total)
+    else:
+        logger.debug("Order %s updated — status=%s, total=$%.2f", order.order_id_str, order.status.value, order.total)
 
 
 def load_order(order_id: str) -> Optional[Order]:
@@ -162,6 +170,9 @@ def check_and_update_stock(order: Order) -> list[dict]:
                     "new_stock": stock_before - oi.quantity,
                 })
             session.commit()
+    if items_report:
+        deductions = ", ".join(f"{r['name']} {r['previous_stock']}->{r['new_stock']}" for r in items_report)
+        logger.debug("Stock deducted for %s: %s", order.order_id_str, deductions)
     return items_report
 
 
