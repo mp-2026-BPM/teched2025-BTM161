@@ -1,6 +1,9 @@
+import logging
 import os
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger("coffee_shop.handoff")
 
 load_dotenv()
 
@@ -39,32 +42,86 @@ def _create_chat_llm():
 chat_llm = _create_chat_llm()
 
 
-def _strip_handoff_from_parallel(message):
-    """If the LLM emits a handoff tool call alongside other tool calls,
-    drop the handoff so the real tools execute first.  The LLM will
-    re-issue the handoff on its next turn once it sees the tool results."""
-    if not hasattr(message, "tool_calls") or len(message.tool_calls) <= 1:
+class _HandoffDeferrer:
+    """Callable that defers handoff tool calls when they co-occur with
+    other tool calls, then re-injects them once the model next responds
+    with no tool calls (i.e. after it finishes its non-handoff work).
+
+    At most one handoff is stored; if the model emits multiple handoffs
+    in a single response only the first is kept.
+
+    Each agent gets its own instance (created in ``bind_tools_sequential``),
+    so state never leaks between agents.  Within a single conversation the
+    react-agent loop calls the model sequentially, which keeps the
+    ``_pending`` bookkeeping safe without locks.
+    """
+
+    def __init__(self):
+        self._pending = None
+        self._defer_count = 0
+
+    def __call__(self, message):
+        tool_calls = getattr(message, "tool_calls", None) or []
+        names = [tc["name"] for tc in tool_calls]
+        logger.debug("model returned tool_calls=%s | pending=%s",
+                      names, self._pending["name"] if self._pending else None)
+
+        # --- 1. Handle any previously deferred handoff ----------------------
+        if self._pending is not None:
+            has_handoff_now = any(
+                tc["name"].startswith("transfer_to_")
+                for tc in tool_calls
+            )
+            if has_handoff_now:
+                logger.info("LLM re-issued handoff — discarding old pending "
+                            "(new message will be re-evaluated)")
+                self._pending = None
+                self._defer_count = 0
+                # fall through: section 2 will handle the new message normally
+            elif not tool_calls:
+                logger.info("injecting deferred handoff %s into text-only response",
+                            self._pending["name"])
+                message.tool_calls = [self._pending]
+                self._pending = None
+                self._defer_count = 0
+                return message
+            else:
+                self._defer_count += 1
+                logger.debug("LLM made more non-handoff calls %s — keeping pending "
+                             "(defer count: %d)", names, self._defer_count)
+
+        # --- 2. Check current message for parallel handoff + other tools ----
+        if len(tool_calls) <= 1:
+            return message
+
+        handoff = [tc for tc in tool_calls if tc["name"].startswith("transfer_to_")]
+        non_handoff = [tc for tc in tool_calls if not tc["name"].startswith("transfer_to_")]
+
+        if handoff and non_handoff:
+            if len(handoff) > 1:
+                logger.warning("multiple handoffs in one response — keeping only first: %s",
+                               [tc["name"] for tc in handoff])
+            logger.info("stripping %s (will defer); keeping %s",
+                        handoff[0]["name"], [tc["name"] for tc in non_handoff])
+            self._pending = handoff[0]
+            self._defer_count = 0
+            message.tool_calls = non_handoff
+
         return message
-    handoff = [tc for tc in message.tool_calls if tc["name"].startswith("transfer_to_")]
-    non_handoff = [tc for tc in message.tool_calls if not tc["name"].startswith("transfer_to_")]
-    if handoff and non_handoff:
-        message.tool_calls = non_handoff
-    return message
 
 
 def bind_tools_sequential(llm, tools):
     """bind_tools with parallel-call mitigation.
 
-    ChatAnthropic accepts ``parallel_tool_calls=False``; ChatOllama does not.
-    For all providers we also apply a defensive post-processor that strips
-    handoff calls when they co-occur with other tool calls, since a handoff
-    alongside real tool calls would cause the swarm to skip execution.
+    ChatAnthropic accepts ``parallel_tool_calls=False``; ChatOllama forwards
+    the kwarg to its underlying client, which raises TypeError at invoke time.
+    For Ollama we instead post-process: if a handoff tool call co-occurs with
+    other tool calls, the handoff is deferred and automatically re-injected
+    once the LLM finishes its non-handoff work.
     """
     if type(llm).__name__ == "ChatOllama":
-        bound = llm.bind_tools(tools)
-    else:
-        bound = llm.bind_tools(tools, parallel_tool_calls=False)
-    return bound | _strip_handoff_from_parallel
+        return llm.bind_tools(tools) | _HandoffDeferrer()
+    return llm.bind_tools(tools, parallel_tool_calls=False)
 
 
 def normalize_content(content):
