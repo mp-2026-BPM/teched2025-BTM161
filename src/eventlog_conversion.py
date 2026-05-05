@@ -1,0 +1,175 @@
+from dataclasses import dataclass
+
+import polars as pl
+
+
+EVENT_ATTRIBUTES = {
+    "call_llm": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
+    "user_prompt": ["ocel_time"],
+    "prepare_order": ["ocel_time", "duration"] ,
+    "estimate_prep_time": ["ocel_time", "duration"],
+    "process_order": ["ocel_time", "duration"],
+    "check_inventory": ["ocel_time", "duration"],
+    "update_stock": ["ocel_time", "duration"],
+    "get_order": ["ocel_time", "duration"],
+    "remake_order_item": ["ocel_time", "duration"],
+    "transfer_to_customer_service": ["ocel_time", "duration"],
+    "offer_refund": ["ocel_time", "duration"],
+    "offer_partial_refund": ["ocel_time", "duration"],
+    "transfer_to_order_agent": ["ocel_time", "duration"],
+    "transfer_to_barista": ["ocel_time", "duration"],
+    "transfer_to_inventory": ["ocel_time", "duration"],
+    "get_alternatives": ["ocel_time", "duration"],
+    "calculate_total": ["ocel_time", "duration"],
+}
+
+OBJECT_ATTRIBUTES = {
+    "agent": [],
+    "user": [],
+    "prompt": ["message"] 
+}
+
+@dataclass
+class ObjectCentricEventlog:
+    """
+    Minimal OCEL 2.0 container
+    """
+
+    events: pl.DataFrame
+    objects: pl.DataFrame
+    event_object: pl.DataFrame
+    object_object: pl.DataFrame
+    event_map_type: pl.DataFrame
+    object_map_type: pl.DataFrame
+    event_tables: dict[str, pl.DataFrame]
+    object_tables: dict[str, pl.DataFrame]
+
+    @classmethod
+    def from_eventlog(cls, eventlog: str | pl.DataFrame) -> "ObjectCentricEventlog":
+        """
+        Crate an ObjectCentricEventlog according to the OCEL 2.0 standard from a flat event log.
+        The input is either a path to the eventlog or the eventlog a as a polars DataFrame
+
+        Input:
+            el : pl.DataFrame holding the raw event log as loaded directly from the CSV.
+
+        """
+        if isinstance(eventlog, str):
+            eventlog = pl.read_csv(eventlog)
+
+        el_enriched = (
+            eventlog.with_columns(
+                object_id_agent=pl.when(pl.col("org:resource").str.contains("agent")).then(pl.col("org:resource")).otherwise(pl.col("case_id")),
+                object_type_agent=pl.when(pl.col("org:resource").str.contains("agent")).then(pl.lit("agent")).otherwise(pl.lit("user")),
+                object_type_prompt=pl.when(pl.col("concept:instance") == "prompt").then(pl.col("concept:instance")).otherwise(pl.lit(None)),
+                object_id_prompt=pl.when(pl.col("concept:instance") == "prompt").then(pl.lit("prompt_") + pl.col("identity:id")).otherwise(pl.lit(None)),
+                event_id=pl.col("identity:id"),
+                event_type=pl.when((pl.col("concept:name") == "execute_tool") & pl.col("tool").is_not_null()).then(pl.col("tool")).otherwise(pl.col("concept:name")),
+                ocel_time=pl.col("time_finished").str.to_datetime()
+            )
+        )
+
+        objects = (
+            el_enriched
+            .select(
+                pl.concat_list([
+                    pl.struct(
+                        pl.col("object_id_agent").alias("ocel_id"),
+                        pl.col("object_type_agent").alias("ocel_type"),
+                    ),
+                    pl.struct(
+                        pl.col("object_id_prompt").alias("ocel_id"),
+                        pl.col("object_type_prompt").alias("ocel_type"),
+                    ),
+                ])
+            )
+            .explode("ocel_id")
+            .select(pl.col("ocel_id").struct.unnest())
+            .drop_nulls().unique()
+        )
+
+        events = (
+            el_enriched
+            .select(
+                ocel_id=pl.col("event_id"),
+                ocel_type=pl.col("event_type")
+            )
+        )
+
+        event_object = (
+            el_enriched
+            .select(
+                ocel_event_id=pl.col("event_id"),
+                ocel_object_id=pl.concat_list([
+                    pl.col("object_id_agent"), pl.col("object_id_prompt")
+                ]),
+                ocel_qualifier=pl.concat_list([
+                    pl.col("object_type_agent"), pl.col("object_type_prompt")
+                ])
+            )
+            .explode("ocel_object_id", "ocel_qualifier")
+            .drop_nulls()
+        )
+
+        object_object = pl.DataFrame(
+            schema={
+                "ocel_source_id": str,
+                "ocel_target_id": str,
+                "ocel_qualifier": str,
+            }
+        )
+
+        event_map_type = (
+            events.select("ocel_type").unique()
+            .with_columns(ocel_type_map=pl.col("ocel_type"))
+        )
+
+        object_map_type = (
+            objects.select("ocel_type").unique()
+            .with_columns(ocel_type_map=pl.col("ocel_type"))
+        )
+
+        event_tables = {}
+        for evt_type in event_map_type["ocel_type"].to_list():
+            attrs = EVENT_ATTRIBUTES[evt_type]
+            evt_type_tbl = (
+                events
+                .filter(pl.col("ocel_type") == evt_type)
+                .join(
+                    el_enriched.select(["event_id", *attrs]),
+                    left_on="ocel_id",
+                    right_on="event_id",
+                    how="left",
+                )
+                .drop("ocel_type")
+            )
+            event_tables[f"event_{evt_type}"] = evt_type_tbl
+
+        object_tables = {}
+        for obj_type in object_map_type["ocel_type"].to_list():
+            attrs = OBJECT_ATTRIBUTES[obj_type]
+            column_id = "object_id_prompt" if obj_type == "prompt" else "object_id_agent"
+            obj_type_tbl = (
+                objects
+                .filter(pl.col("ocel_type") == obj_type)
+                .join(
+                    el_enriched.select([column_id, *attrs]),
+                    left_on="ocel_id",
+                    right_on=column_id,
+                    how="left",
+                )
+                .drop("ocel_type")
+                .unique()
+            )
+            object_tables[f"object_{obj_type}"] = obj_type_tbl
+
+        return cls(
+            events=events,
+            objects=objects,
+            event_object=event_object,
+            object_object=object_object,
+            event_map_type=event_map_type,
+            object_map_type=object_map_type,
+            event_tables=event_tables,
+            object_tables=object_tables
+        )

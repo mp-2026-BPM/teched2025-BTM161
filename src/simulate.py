@@ -1,4 +1,5 @@
 import argparse
+import logging
 import sys
 
 from .coffee_shop import CoffeeShop
@@ -50,9 +51,16 @@ def main():
         "--quiet", action="store_true",
         help="Minimal output: only trace numbers, scenarios, and summary",
     )
+    parser.add_argument(
+        "--log-level", type=str, default="warning",
+        choices=["debug", "info", "warning", "error"],
+        help="Set the logging level for the coffee_shop logger (default: warning)",
+    )
     args = parser.parse_args()
 
     scenario_mode, scenario_index = parse_scenario(args.scenario)
+
+    logging.getLogger("coffee_shop").setLevel(getattr(logging, args.log_level.upper()))
 
     print("Initializing coffee shop...")
     shop = CoffeeShop()

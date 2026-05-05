@@ -17,6 +17,11 @@ __pycache__/
 *.pyo
 
 .DS_Store
+dev.ipynb
 
 # Environment configuration
 .env
+# SQLite database
+*.db
+*.db-wal
+*.db-shm
