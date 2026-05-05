@@ -1,118 +1,101 @@
 from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
+import logging
 import json
-from dataclasses import asdict
+
+logger = logging.getLogger("coffee_shop.inventory_agent")
 
 from .shared_components import (
-    inventory_manager, MENU, Order, OrderInputSchema,
-    transfer_to_barista, transfer_to_customer_service
+    OrderIdSchema, OrderStatus,
+    transfer_to_barista, transfer_to_customer_service,
 )
 from ..llm import bind_tools_sequential
+from .order_store import (
+    load_order, save_order, get_order,
+    check_inventory_availability, check_and_update_stock,
+    get_inventory_item, get_alternatives_from_db,
+)
 
 
 # INVENTORY AGENT TOOLS
-@tool(args_schema=OrderInputSchema)
-def check_inventory(order: Order):
-    """Check if all items in current order are available and return a structured JSON-like report."""
-    items_report = []
-    all_available = True
-    unavailable_items = []
+@tool(args_schema=OrderIdSchema)
+def check_inventory(order_id: str) -> str:
+    """Check if all items in the order are available in inventory."""
+    order = load_order(order_id)
+    if order is None:
+        return f"Error: Order '{order_id}' not found."
 
-    for order_item in order.items:
-        menu_item = inventory_manager.inventory.get(order_item.name)
-        if menu_item is None:
-            return "Error: Item '{order_item.name}' not found in inventory."
-        else:
-            available_qty = menu_item.stock
-            if available_qty >= order_item.quantity:
-                status = "available"
-            elif available_qty > 0:
-                status = "partial"
-            else:
-                status = "out_of_stock"
+    report = check_inventory_availability(order)
+    if "error" in report:
+        return report["error"]
 
-        items_report.append({
-            "name": order_item.name,
-            "requested_quantity": order_item.quantity,
-            "available_quantity": available_qty,
-            "status": status
-        })
+    new_status = OrderStatus.INVENTORY_CONFIRMED if report["all_available"] else OrderStatus.INVENTORY_ISSUES
+    order.status = new_status
+    save_order(order)
+    if report["all_available"]:
+        logger.debug("Inventory check passed for %s", order_id)
+    else:
+        logger.debug("Inventory issues for %s: %s", order_id, ", ".join(report["unavailable_items"]))
 
-        if status != "available":
-            unavailable_items.append(order_item.name)
-            all_available = False
-
-    order.status = "inventory_confirmed" if all_available else "inventory_issues"
-
-    report = {
-        "order_id": order.id,
-        "all_available": all_available,
-        "details": items_report,
-        "unavailable_items": unavailable_items
-    }
+    summary = f"Order {order_id}: {new_status}."
+    if not report["all_available"]:
+        summary += f" Unavailable: {', '.join(report['unavailable_items'])}."
+    for d in report["details"]:
+        summary += f"\n  {d['name']}: {d['status']} (requested {d['requested']}, available {d['available']})"
 
     return json.dumps({
-        "report": report,
-        "order": asdict(order)
+        "order_id": order_id,
+        "status": new_status.value,
+        "all_available": report["all_available"],
+        "summary": summary,
     })
 
 
-@tool(args_schema=OrderInputSchema)
-def update_stock(order: Order):
-    """Update inventory after order confirmation and return a technical JSON-like report."""
+@tool(args_schema=OrderIdSchema)
+def update_stock(order_id: str) -> str:
+    """Update inventory after order confirmation."""
+    order = load_order(order_id)
+    if order is None:
+        return f"Error: Order '{order_id}' not found."
+    if order.status != OrderStatus.INVENTORY_CONFIRMED:
+        return (
+            f"Error: Cannot update stock - order {order_id} status is "
+            f"'{order.status.value}', not 'inventory_confirmed'."
+        )
 
-    if order.status != "inventory_confirmed":
-        return "Error: Cannot update stock - order not confirmed or no active order."
+    try:
+        items_report = check_and_update_stock(order)
+    except (KeyError, ValueError) as e:
+        order.status = OrderStatus.INVENTORY_ISSUES
+        save_order(order)
+        return f"Error updating stock: {e}"
 
-    items_report = []
-
-    for order_item in order.items:
-        inv_item = inventory_manager.inventory.get(order_item.name)
-        if inv_item is None:
-            raise KeyError(f"Item '{order_item.name}' not found in inventory.")
-
-        stock_before = inv_item.stock
-        inventory_manager.inventory[order_item.name].stock -= order_item.quantity
-
-        items_report.append({
-            "name": order_item.name,
-            "quantity_removed": order_item.quantity,
-            "previous_stock": stock_before,
-            "new_stock": stock_before - order_item.quantity
-        })
+    summary = f"Stock updated for order {order_id}. {len(items_report)} item(s) deducted."
+    for item in items_report:
+        summary += f"\n  {item['name']}: {item['previous_stock']} -> {item['new_stock']}"
 
     return json.dumps({
-        "report": {
-            "order_id": order.id,
-            "status": "success",
-            "total_items_updated": len(items_report),
-            "items": items_report,
-            "note": "Order ready for barista preparation."
-        },
-        "order": asdict(order)
+        "order_id": order_id,
+        "status": "success",
+        "items_updated": len(items_report),
+        "summary": summary,
     })
 
 
 @tool
-def get_alternatives(item_name: str):
+def get_alternatives(item_name: str) -> str:
     """Get alternative items for out-of-stock products."""
-    if item_name not in MENU:
+    item = get_inventory_item(item_name.lower())
+    if item is None:
         return f"Error: Item '{item_name}' not found in menu."
 
-    original_item = MENU[item_name]
-    alternatives = []
-
-    for name, item in inventory_manager.inventory.items():
-        if (name != item_name and
-            item.category == original_item.category and
-                item.stock > 0):
-            alternatives.append(
-                f"{name.title()} (${item.price:.2f}) - {item.stock} available")
+    alts = get_alternatives_from_db(item_name.lower())
+    alt_strs = [f"{a['name'].title()} (${a['price']:.2f}) - {a['stock']} available" for a in alts]
 
     return json.dumps({
-        "alternatives": alternatives,
-        "original_item": original_item.name,
-        "category": original_item.category
+        "alternatives": alt_strs,
+        "original_item": item_name,
+        "category": item["category"],
     })
 
 
@@ -120,17 +103,21 @@ def create_inventory_agent(chat_llm, prompt=None):
     """Create and return the inventory agent."""
     if not prompt:
         prompt = """You are the inventory management agent for a coffee shop.
-        
-        Your responsibilities:
-        - Check item availability for orders
-        - Update stock levels after confirmation
-        - Find alternatives for out-of-stock items
-        - Transfer to barista when items are available
-        - Transfer to customer service when items are unavailable
-        
-        Be thorough in your inventory checks and proactive about suggesting alternatives."""
 
-    tools = [check_inventory, update_stock, get_alternatives,
+        Your job:
+        - Check item availability for an order using check_inventory.
+        - If all items are available: update stock levels with update_stock, then MUST transfer to the barista agent.
+        - If items are unavailable: suggest alternatives using get_alternatives, then transfer to customer service.
+
+        After checking inventory and updating stock, you MUST transfer immediately.
+        Do NOT tell the customer the order is ready — you only handle stock.
+
+        You can transfer to:
+        - Barista agent: when all items are confirmed available and stock is updated
+        - Customer service agent: when items are unavailable and need resolution
+        """
+
+    tools = [check_inventory, update_stock, get_alternatives, get_order,
              transfer_to_barista, transfer_to_customer_service]
 
     llm_with_tools = bind_tools_sequential(chat_llm, tools)

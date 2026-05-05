@@ -1,70 +1,134 @@
-from langgraph_swarm import create_handoff_tool
+from enum import Enum
 from typing import List, Optional
-from dataclasses import dataclass, field
-from pydantic import BaseModel, Field
-import copy
+from datetime import datetime, timezone
 
-# Data Models
-@dataclass
-class MenuItem:
-    name: str
+from langgraph_swarm import create_handoff_tool
+from pydantic import BaseModel, Field
+from sqlalchemy import Enum as SAEnum
+from sqlmodel import SQLModel, Field as SQLField, Relationship, Column, JSON
+
+
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
+class OrderStatus(str, Enum):
+    PENDING = "pending"
+    INVENTORY_CONFIRMED = "inventory_confirmed"
+    INVENTORY_ISSUES = "inventory_issues"
+    IN_PREPARATION = "in_preparation"
+    COMPLETED = "completed"
+    PREPARATION_ERROR = "preparation_error"
+    REFUNDED = "refunded"
+    CANCELLED = "cancelled"
+
+
+class Size(str, Enum):
+    SMALL = "small"
+    MEDIUM = "medium"
+    LARGE = "large"
+
+
+# ---------------------------------------------------------------------------
+# Global allowed extras
+# ---------------------------------------------------------------------------
+
+ALLOWED_EXTRAS: set[str] = {
+    "soy milk", "oat milk", "almond milk",
+    "extra shot", "decaf",
+    "whipped cream", "vanilla syrup", "caramel syrup",
+    "hot", "cold", "iced",
+}
+
+
+# ---------------------------------------------------------------------------
+# SQLModel table classes
+# ---------------------------------------------------------------------------
+
+class MenuItem(SQLModel, table=True):
+    __tablename__ = "inventory"
+
+    name: str = SQLField(primary_key=True)
     price: float
     stock: int
     category: str
 
-@dataclass
-class OrderItem:
-    name: str
+
+class OrderItem(SQLModel, table=True):
+    __tablename__ = "order_items"
+
+    id: int | None = SQLField(default=None, primary_key=True)
+    order_id: int = SQLField(foreign_key="orders.id")
+    name: str = SQLField(foreign_key="inventory.name")
     quantity: int
     price: float
-    size: Optional[str] = None
-    extras: Optional[List[str]] = field(default_factory=list)
+    size: Size | None = SQLField(
+        default=None,
+        sa_column=Column(SAEnum(Size, values_callable=lambda e: [m.value for m in e]),
+                         nullable=True),
+    )
+    extras: list[str] = SQLField(default_factory=list, sa_column=Column(JSON))
 
-@dataclass
-class Order:
-    id: str
-    total: float
-    status: str
+    order: Optional["Order"] = Relationship(back_populates="items")
+
+
+class Order(SQLModel, table=True):
+    __tablename__ = "orders"
+
+    id: int | None = SQLField(default=None, primary_key=True)
     customer: str
-    items: List[OrderItem] = field(default_factory=list)
+    status: OrderStatus = SQLField(
+        default=OrderStatus.PENDING,
+        sa_column=Column(SAEnum(OrderStatus, values_callable=lambda e: [m.value for m in e]),
+                         nullable=False),
+    )
+    total: float = 0.0
+    created_at: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
+
+    items: List[OrderItem] = Relationship(
+        back_populates="order",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "lazy": "selectin"},
+    )
+
+    @property
+    def order_id_str(self) -> str:
+        return f"ORD{self.id:04d}" if self.id else "ORD????"
 
 
-class OrderInputSchema(BaseModel):
-    order: Order = Field(description="The current order object")
+# ---------------------------------------------------------------------------
+# Menu
+# ---------------------------------------------------------------------------
 
-
-
-# Coffee Shop Menu and Inventory
 MENU = {
-    "espresso": MenuItem("Espresso", 2.50, 20, "coffee"),
-    "latte": MenuItem("Latte", 4.00, 15, "coffee"),
-    "cappuccino": MenuItem("Cappuccino", 3.75, 18, "coffee"),
-    "americano": MenuItem("Americano", 3.00, 22, "coffee"),
-    "croissant": MenuItem("Croissant", 2.75, 8, "pastry"),
-    "muffin": MenuItem("Muffin", 3.25, 12, "pastry"),
-    "sandwich": MenuItem("Sandwich", 6.50, 5, "food")
+    "espresso": MenuItem(name="espresso", price=2.50, stock=20, category="coffee"),
+    "latte": MenuItem(name="latte", price=4.00, stock=15, category="coffee"),
+    "cappuccino": MenuItem(name="cappuccino", price=3.75, stock=18, category="coffee"),
+    "americano": MenuItem(name="americano", price=3.00, stock=22, category="coffee"),
+    "croissant": MenuItem(name="croissant", price=2.75, stock=8, category="pastry"),
+    "muffin": MenuItem(name="muffin", price=3.25, stock=12, category="pastry"),
+    "sandwich": MenuItem(name="sandwich", price=6.50, stock=5, category="food"),
 }
 
-# Global state for demonstration
-class InventoryManager:
-    def __init__(self):
-        self.reset()
 
-    def reset(self):
-        self.inventory = copy.deepcopy(MENU)
+# ---------------------------------------------------------------------------
+# Pydantic schema for tools that operate on an existing order by ID
+# ---------------------------------------------------------------------------
 
-# Create a single, shared instance of the inventory manager
-inventory_manager = InventoryManager()
+class OrderIdSchema(BaseModel):
+    order_id: str = Field(description="The order ID (e.g. 'ORD0001')")
 
 
+# ---------------------------------------------------------------------------
 # Handoff Tools
+# ---------------------------------------------------------------------------
+
 transfer_to_inventory = create_handoff_tool(
     agent_name="inventory_agent",
     description="Transfer to inventory agent to check item availability."
 )
 
 transfer_to_barista = create_handoff_tool(
-    agent_name="barista_agent", 
+    agent_name="barista_agent",
     description="Transfer to barista agent to prepare the order."
 )
 

@@ -61,6 +61,9 @@ poetry run simulate --traces 5 --scenario 2
 # Run with minimal output (no message content)
 poetry run simulate --traces 10 --quiet
 
+# Run with debug logging enabled
+poetry run simulate --traces 5 --log-level debug
+
 # Export event logs after simulation
 poetry run simulate --traces 10 --scenario all --export-logs
 ```
@@ -73,6 +76,7 @@ poetry run simulate --traces 10 --scenario all --export-logs
 | `--scenario` | `random` | Scenario index (`0`–`3`), `all` (round-robin), or `random` |
 | `--export-logs` | off | Generate event log CSV after simulation |
 | `--quiet` | off | Minimal output: only trace numbers, scenarios, and summary |
+| `--log-level` | `warning` | Set the logging level for agent diagnostics (`debug`, `info`, `warning`, `error`) |
 
 ### Available Scenarios
 
@@ -82,6 +86,10 @@ poetry run simulate --traces 10 --scenario all --export-logs
 | 1 | Order 2 espressos (in a hurry) |
 | 2 | Complain about a cold cappuccino and seek resolution |
 | 3 | Ask for a recommendation and order based on suggestion |
+
+## Observing the Database
+
+Orders and inventory are persisted in a local SQLite database (`coffee_shop.db`). To inspect the database while the agents are running, install the [SQLite Viewer](https://marketplace.visualstudio.com/items?itemName=qwtel.sqlite-viewer) extension in VS Code. Once installed, simply open `coffee_shop.db` from the file explorer and the extension will display the tables in a browsable grid view. You can refresh the view at any time to see the latest orders and stock levels as they are updated by the agents during a simulation.
 
 ## Agent Architecture
 

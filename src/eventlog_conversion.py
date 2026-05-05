@@ -78,7 +78,7 @@ class ObjectCentricEventlog:
             el : pl.DataFrame holding the raw event log as loaded directly from the CSV.
 
         """
-        if type(eventlog) == str:
+        if isinstance(eventlog, str):
             eventlog = pl.read_csv(eventlog)
 
         el_enriched = preprocess_eventlog(eventlog)
