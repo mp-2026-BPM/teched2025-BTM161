@@ -7,6 +7,8 @@ EVENT_ATTRIBUTES = {
     "agent_response": ["ocel_time", "duration", "input_tokens", "response_tokens"],
     "call_llm": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
     "user_prompt": ["ocel_time"],
+
+    # tools
     "prepare_order": ["ocel_time", "duration"],
     "estimate_prep_time": ["ocel_time", "duration"],
     "process_order": ["ocel_time", "duration"],
@@ -17,11 +19,14 @@ EVENT_ATTRIBUTES = {
     "transfer_to_customer_service": ["ocel_time", "duration"],
     "offer_refund": ["ocel_time", "duration"],
     "offer_partial_refund": ["ocel_time", "duration"],
+    "get_alternatives": ["ocel_time", "duration"],
+    "calculate_total": ["ocel_time", "duration"],
+
     "transfer_to_order_agent": ["ocel_time", "duration"],
     "transfer_to_barista": ["ocel_time", "duration"],
     "transfer_to_inventory": ["ocel_time", "duration"],
-    "get_alternatives": ["ocel_time", "duration"],
-    "calculate_total": ["ocel_time", "duration"],
+
+    # handovers
     "order_agent_handover_inventory_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
     "order_agent_handover_barista_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
     "order_agent_handover_customer_service_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
@@ -34,7 +39,6 @@ EVENT_ATTRIBUTES = {
     "customer_service_agent_handover_order_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
     "customer_servicey_agent_handover_barista_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
     "customer_service_agent_handover_inventory_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
-
 }
 
 OBJECT_ATTRIBUTES = {
@@ -108,10 +112,10 @@ class ObjectCentricEventlog:
             el_enriched.select(
                 ocel_event_id=pl.col("event_id"),
                 ocel_object_id=pl.concat_list(
-                    [pl.col("object_id_agent"), pl.col("object_id_message")]
+                    [pl.col("object_id_agent"), pl.col("object_id_message"), pl.col("related_prompt")]
                 ),
                 ocel_qualifier=pl.concat_list(
-                    [pl.col("object_type_agent"), pl.col("object_type_message")]
+                    [pl.col("object_type_agent"), pl.col("object_type_message"), pl.lit("prompt")]
                 ),
             )
             .explode("ocel_object_id", "ocel_qualifier")
@@ -267,6 +271,20 @@ def preprocess_eventlog(eventlog: pl.DataFrame) -> pl.DataFrame:
             rows_to_insert_second_direction
         ])
         .sort("index")
+    )
+
+    el_enriched = (
+        el_enriched
+        .with_columns(
+            previous_event_type=pl.col("event_type").shift(1),
+            previous_object_id_message=pl.col("object_id_message").shift(1),
+        )
+        .with_columns(
+            related_prompt=
+                pl.when((pl.col("event_type") == "agent_response") & (pl.col("previous_event_type") == "user_prompt"))
+                .then(pl.col("previous_object_id_message"))
+                .otherwise(pl.lit(None))
+        )
     )
 
     return el_enriched
