@@ -89,9 +89,9 @@ def save_order(order: Order) -> None:
                 session.commit()
                 session.refresh(order)
     if is_new:
-        logger.debug("Order %s created for %s — %d item(s), $%.2f", order.order_id_str, order.customer, len(order.items), order.total)
+        logger.debug(f"Order {order.order_id_str} created for {order.customer} — {len(order.items)} item(s), ${order.total:.2f}")
     else:
-        logger.debug("Order %s updated — status=%s, total=$%.2f", order.order_id_str, order.status.value, order.total)
+        logger.debug(f"Order {order.order_id_str} updated — status={order.status.value}, total=${order.total:.2f}")
 
 
 def load_order(order_id: str) -> Optional[Order]:

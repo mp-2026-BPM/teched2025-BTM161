@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 import json
 
 from .order_store import load_order, save_order, get_order
+from .order_state_machine import state_machine, InvalidTransitionError
 
 
 class PartialRefundSchema(BaseModel):
@@ -29,10 +30,15 @@ def offer_refund(order_id: str) -> str:
         return f"Error: Order '{order_id}' not found."
 
     refund_amount = order.total
-    order.status = OrderStatus.REFUNDED
+    try:
+        order = state_machine.transition(order, OrderStatus.REFUNDED, context="offer_refund: full refund")
+    except InvalidTransitionError as e:
+        return json.dumps({
+            "order_id": order_id,
+            "error": f"Cannot process refund: {e}",
+        })
     order.total = 0.0
     save_order(order)
-    logger.debug("Full refund $%.2f for %s", refund_amount, order_id)
 
     return json.dumps({
         "order_id": order_id,

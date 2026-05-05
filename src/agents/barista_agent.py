@@ -13,7 +13,8 @@ from .shared_components import (
     OrderIdSchema, OrderStatus,
     transfer_to_customer_service,
 )
-from .order_store import load_order, save_order, get_order
+from .order_store import load_order, get_order
+from .order_state_machine import state_machine, InvalidTransitionError
 
 
 class RemakeItemSchema(BaseModel):
@@ -32,8 +33,10 @@ def prepare_order(order_id: str) -> str:
     if order.status != OrderStatus.INVENTORY_CONFIRMED:
         return f"Error: Inventory not confirmed for order {order_id}. Cannot prepare."
 
-    order.status = OrderStatus.IN_PREPARATION
-    save_order(order)
+    try:
+        order = state_machine.transition(order, OrderStatus.IN_PREPARATION, context="prepare_order: starting")
+    except InvalidTransitionError as e:
+        return json.dumps({"order_id": order_id, "error": f"Cannot start preparation: {e}"})
 
     # Simulate preparation with 20% chance of error
     preparation_success = random.random() > 0.2
@@ -43,16 +46,19 @@ def prepare_order(order_id: str) -> str:
         prep_report += f"- Making {item.quantity}x {item.name.title()}\n"
 
     if preparation_success:
-        order.status = OrderStatus.COMPLETED
+        try:
+            order = state_machine.transition(order, OrderStatus.COMPLETED, context="prepare_order: success")
+        except InvalidTransitionError as e:
+            return json.dumps({"order_id": order_id, "error": f"Cannot mark order as completed after preparation: {e}"})
         prep_report += "\nAll items prepared successfully!"
-        logger.debug("Order %s prepared successfully", order_id)
     else:
-        order.status = OrderStatus.PREPARATION_ERROR
         failed_item = random.choice(order.items)
         prep_report += f"\nError preparing {failed_item.name.title()}"
-        logger.debug("Order %s preparation failed on %s", order_id, failed_item.name)
-
-    save_order(order)
+        try:
+            order = state_machine.transition(order, OrderStatus.PREPARATION_ERROR,
+                                             context=f"prepare_order: failed on {failed_item.name}")
+        except InvalidTransitionError as e:
+            return json.dumps({"order_id": order_id, "error": f"Cannot record preparation error: {e}"})
     return json.dumps({"order_id": order_id, "status": order.status.value, "summary": prep_report})
 
 
@@ -69,16 +75,21 @@ def remake_order_item(order_id: str, item_name: str) -> str:
             remake_success = random.random() > 0.1
 
             if remake_success:
-                order.status = OrderStatus.COMPLETED
-                save_order(order)
-                logger.debug("Remade %s for order %s successfully", item_name, order_id)
+                try:
+                    order = state_machine.transition(order, OrderStatus.COMPLETED,
+                                                     context=f"remake_order_item: {item_name}")
+                except InvalidTransitionError as e:
+                    return json.dumps({
+                        "order_id": order_id,
+                        "error": f"Cannot mark order as completed after remake: {e}",
+                    })
                 return json.dumps({
                     "order_id": order_id,
                     "status": OrderStatus.COMPLETED.value,
                     "summary": f"Successfully remade {item_name.title()} for order {order_id}.",
                 })
             else:
-                logger.debug("Remake of %s for order %s failed", item_name, order_id)
+                logger.debug(f"Remake of {item_name} for order {order_id} failed")
                 return json.dumps({
                     "order_id": order_id,
                     "status": order.status.value,
