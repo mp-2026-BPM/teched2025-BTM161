@@ -41,7 +41,7 @@ EVENT_ATTRIBUTES = {
     "inventory_agent_handover_barista_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
     "inventory_agent_handover_customer_service_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
     "customer_service_agent_handover_order_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
-    "customer_servicey_agent_handover_barista_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
+    "customer_service_agent_handover_barista_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
     "customer_service_agent_handover_inventory_agent": ["ocel_time", "model", "duration", "input_tokens", "response_tokens"],
 }
 
