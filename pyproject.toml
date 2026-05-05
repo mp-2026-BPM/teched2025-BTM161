@@ -3,7 +3,7 @@ name = "lg-coffee-mas"
 version = "0.1.0"
 description = ""
 readme = "README.md"
-requires-python = ">=3.13,<4.0"
+requires-python = ">=3.13,<3.14"
 
 dependencies = [
     "langgraph (>=0.6.8,<0.7.0)",
@@ -14,7 +14,8 @@ dependencies = [
     "ollama (>=0.6.1,<0.7.0)",
     "langchain[ollama] (<1.0.0)",
     "langchain[anthropic] (<1.0.0)",
-    "python-dotenv (>=1.0.0,<2.0.0)"
+    "python-dotenv (>=1.0.0,<2.0.0)",
+    "pm4py (>=2.7.22.2,<3.0.0.0)"
 ]
 
 [project.scripts]
