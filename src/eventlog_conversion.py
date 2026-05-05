@@ -1,4 +1,8 @@
 from dataclasses import dataclass
+from datetime import datetime
+
+import json
+import os
 
 import polars as pl
 
@@ -189,6 +193,130 @@ class ObjectCentricEventlog:
             event_tables=event_tables,
             object_tables=object_tables,
         )
+
+
+    def export_to_json(self, export_name: str | None = None) -> None:
+        """
+            Export the respective ocel to a json file
+        """
+        def map_dtype(dtype: pl.DataType) -> str:
+            if dtype in (pl.Int8, pl.Int16, pl.Int32, pl.Int64):
+                return "integer"
+            if dtype in (pl.Float32, pl.Float64):
+                return "float"
+            if dtype == pl.Boolean:
+                return "boolean"
+            if dtype == pl.Datetime:
+                return "time"
+            return "string"
+
+        NOW = datetime.utcnow().isoformat() + "Z"
+
+        # ---- eventTypes ----
+        event_types = []
+        for name, df in self.event_tables.items():
+            attrs = [
+                {"name": col, "type": map_dtype(dtype)}
+                for col, dtype in zip(df.columns, df.dtypes)
+                if col not in ("ocel_id", "ocel_time")
+            ]
+            event_types.append({"name": name, "attributes": attrs})
+
+        # ---- objectTypes ----
+        object_types = []
+        for name, df in self.object_tables.items():
+            attrs = [
+                {"name": col, "type": map_dtype(dtype)}
+                for col, dtype in zip(df.columns, df.dtypes)
+                if col != "ocel_id"
+            ]
+            object_types.append({"name": name, "attributes": attrs})
+
+        # ---- event relationships (grouped) ----
+        event_rels = (
+            self.event_object
+            .group_by("ocel_event_id")
+            .agg(pl.struct(["ocel_object_id", "ocel_qualifier"]).alias("rels"))
+        )
+        event_rels_dict = {
+            r["ocel_event_id"]: r["rels"] for r in event_rels.to_dicts()
+        }
+
+        # ---- object relationships (grouped) ----
+        object_rels = (
+            self.object_object
+            .group_by("ocel_source_id")
+            .agg(pl.struct(["ocel_target_id", "ocel_qualifier"]).alias("rels"))
+        )
+        object_rels_dict = {
+            r["ocel_source_id"]: r["rels"] for r in object_rels.to_dicts()
+        }
+
+        # ---- events ----
+        events = []
+        for event_type, df in self.event_tables.items():
+            for row in df.to_dicts():
+                eid = row["ocel_id"]
+
+                events.append({
+                    "id": eid,
+                    "type": event_type,
+                    "time": row["ocel_time"].isoformat(),
+                    "attributes": [
+                        {"name": k, "value": str(v)}
+                        for k, v in row.items()
+                        if k not in ("ocel_id", "ocel_time") and v is not None
+                    ],
+                    "relationships": [
+                        {
+                            "objectId": rel["ocel_object_id"],
+                            "qualifier": rel["ocel_qualifier"]
+                        }
+                        for rel in event_rels_dict.get(eid, [])
+                    ]
+                })
+
+        # ---- objects ----
+        objects = []
+        for obj_type, df in self.object_tables.items():
+            for row in df.to_dicts():
+                oid = row["ocel_id"]
+
+                objects.append({
+                    "id": oid,
+                    "type": obj_type,
+                    "attributes": [
+                        {
+                            "name": k,
+                            "value": str(v),
+                            "time": NOW  # required by schema
+                        }
+                        for k, v in row.items()
+                        if k != "ocel_id" and v is not None
+                    ],
+                    "relationships": [
+                        {
+                            "objectId": rel["ocel_target_id"],
+                            "qualifier": rel["ocel_qualifier"]
+                        }
+                        for rel in object_rels_dict.get(oid, [])
+                    ]
+                })
+
+        # ---- final JSON ----
+        ocel_json = {
+            "eventTypes": event_types,
+            "objectTypes": object_types,
+            "events": events,
+            "objects": objects,
+        }
+
+        # ---- write file ----
+        os.makedirs("./generated_ocel/", exist_ok=True)
+        if not export_name:
+            export_name = f"ocel_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+        with open(f"./generated_ocel/{export_name}.json", "w") as f:
+            json.dump(ocel_json, f, indent=2)
 
 
 def _preprocess_eventlog(eventlog: pl.DataFrame) -> pl.DataFrame:
