@@ -71,7 +71,7 @@ class ObjectCentricEventlog:
     @classmethod
     def from_eventlog(cls, eventlog: str | pl.DataFrame) -> "ObjectCentricEventlog":
         """
-        Crate an ObjectCentricEventlog according to the OCEL 2.0 standard from a flat event log.
+        Create an ObjectCentricEventlog according to the OCEL 2.0 standard from a flat event log.
         The input is either a path to the eventlog or the eventlog a as a polars DataFrame
 
         Input:
@@ -81,7 +81,7 @@ class ObjectCentricEventlog:
         if isinstance(eventlog, str):
             eventlog = pl.read_csv(eventlog)
 
-        el_enriched = preprocess_eventlog(eventlog)
+        el_enriched = _preprocess_eventlog(eventlog)
 
         objects = (
             el_enriched.select(
@@ -154,6 +154,7 @@ class ObjectCentricEventlog:
                     how="left",
                 )
                 .drop("ocel_type")
+                .unique()
             )
             event_tables[f"event_{evt_type}"] = evt_type_tbl
 
@@ -190,9 +191,14 @@ class ObjectCentricEventlog:
         )
 
 
-def preprocess_eventlog(eventlog: pl.DataFrame) -> pl.DataFrame:
+def _preprocess_eventlog(eventlog: pl.DataFrame) -> pl.DataFrame:
+    """
+        Helper function used to preprocess a given eventlog from the coffee shop.
+
+    """
     el_enriched = (
-        eventlog.with_columns(
+        eventlog.with_row_index()
+        .with_columns(
             object_type_message=(
                 pl.when(pl.col("concept:instance") == "prompt").then(pl.col("concept:instance"))
                 .when((pl.col("concept:name") == "call_llm") & (pl.col("message").is_not_null())).then(pl.lit("response"))
@@ -204,78 +210,25 @@ def preprocess_eventlog(eventlog: pl.DataFrame) -> pl.DataFrame:
                 pl.when((pl.col("concept:name") == "execute_tool") & pl.col("tool").is_not_null()).then(pl.col("tool"))
                 .when((pl.col("concept:name") == "call_llm") & (pl.col("message").is_not_null())).then(pl.lit("agent_response"))
                 .otherwise(pl.col("concept:name"))),
-            ocel_time=pl.col("time_finished").str.to_datetime()
+            ocel_time=pl.col("time_finished").str.to_datetime(),
+            index=pl.col("index").cast(pl.Float64),
         )
         .with_columns(
             object_id_message=(
                 pl.when(pl.col("object_type_message") == "prompt").then(pl.lit("prompt_") + pl.col("identity:id"))
                 .when(pl.col("object_type_message") == "response").then(pl.lit("response_") + pl.col("identity:id"))
                 .otherwise(pl.lit(None))),
-        )
-    )
-
-    el_enriched = (
-        el_enriched
-        .with_row_index()
-        .with_columns(
-            index=pl.col("index").cast(pl.Float64),
             next_event_type=pl.col("event_type").shift(-1),
             next_agent=pl.col("object_type_agent").shift(-1),
             next_agent_id=pl.col("object_id_agent").shift(-1)
-        ).with_columns(
+        )
+        .with_columns(
             handover_flag=
             (
                 (pl.col("event_type") == "call_llm") &
                 (pl.col("next_event_type") == "call_llm") &
                 (pl.col("object_type_agent") != pl.col("next_agent"))
-            )
-        )
-    )
-
-    cols_to_keep = ["index", "case_id", "ocel_time", "event_id", "event_type", "object_type_agent", "object_id_agent", "duration", "model", "input_tokens", "response_tokens"]
-
-    rows_to_insert_one_direction = (
-        el_enriched
-        .filter(pl.col("handover_flag"))
-        .with_columns(
-            index=(pl.col("index") + 0.5),
-            ocel_time=pl.col("ocel_time")+ pl.duration(nanoseconds=1),
-            event_type=pl.col("object_type_agent")+"_handover_"+pl.col("next_agent"),
-            object_type_agent=pl.col("object_type_agent"),
-            object_id_agent=pl.col("object_id_agent"),
-        )
-        .with_columns(
-            pl.all().exclude(cols_to_keep).map_elements(lambda _: None)
-        )
-    )
-
-    rows_to_insert_second_direction = (
-        el_enriched
-        .filter(pl.col("handover_flag"))
-        .with_columns(
-            index=(pl.col("index") + 0.5),
-            ocel_time=pl.col("ocel_time")+ pl.duration(nanoseconds=1),
-            event_type=pl.col("object_type_agent")+"_handover_"+pl.col("next_agent"),
-            object_type_agent=pl.col("next_agent"),
-            object_id_agent=pl.col("next_agent_id"),
-        )
-        .with_columns(
-            pl.all().exclude(cols_to_keep).map_elements(lambda _: None)
-        )
-    )
-
-    el_enriched = (
-        pl.concat([
-            el_enriched.filter(pl.col("handover_flag") == False),
-            rows_to_insert_one_direction,
-            rows_to_insert_second_direction
-        ])
-        .sort("index")
-    )
-
-    el_enriched = (
-        el_enriched
-        .with_columns(
+            ),
             previous_event_type=pl.col("event_type").shift(1),
             previous_object_id_message=pl.col("object_id_message").shift(1),
         )
@@ -287,4 +240,38 @@ def preprocess_eventlog(eventlog: pl.DataFrame) -> pl.DataFrame:
         )
     )
 
-    return el_enriched
+    cols_to_keep = ["index", "case_id", "ocel_time", "event_id", "event_type", "object_type_agent", "object_id_agent", "duration", "model", "input_tokens", "response_tokens"]
+
+    handover_rows = (
+        el_enriched.filter(pl.col("handover_flag"))
+        .with_columns(
+            index=pl.col("index") + 0.5,
+            ocel_time=pl.col("ocel_time") + pl.duration(nanoseconds=1),
+            event_type=pl.col("object_type_agent") + "_handover_" + pl.col("next_agent"),
+        )
+    )
+
+    # handover for each agent
+    handover_one_direction = (
+        handover_rows.with_columns(
+            object_type_agent=pl.col("object_type_agent"),
+            object_id_agent=pl.col("object_id_agent"),
+        )
+        .with_columns(pl.all().exclude(cols_to_keep).map_elements(lambda _: None))
+    )
+    handover_second_direction = (
+        handover_rows.with_columns(
+            object_type_agent=pl.col("next_agent"),
+            object_id_agent=pl.col("next_agent_id"),
+        )
+        .with_columns(pl.all().exclude(cols_to_keep).map_elements(lambda _: None))
+    )
+
+    return (
+        pl.concat([
+            el_enriched.filter(pl.col("handover_flag") == False),
+            handover_one_direction,
+            handover_second_direction
+        ])
+        .sort("index")
+    )
