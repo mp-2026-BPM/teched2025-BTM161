@@ -87,11 +87,13 @@ class CoffeeShop():
         self.agent_definitions[agent] = definition
 
 
-    def open_shop(self):
+    def open_shop(self, reset_inventory_first=True):
         """Start the coffee shop application after potentially updating agent definitions"""
 
         init_db()
-        reset_inventory()
+        if reset_inventory_first:
+            _coffee_shop_logger.info("Resetting inventory to initial stock levels")
+            reset_inventory()
 
         self.customer_agent = CustomerAgent(chat_llm)
 
@@ -295,12 +297,13 @@ class CoffeeShop():
 
         return self._last_agent_message
 
-    def run_conversation(self, scenario_index=None, on_message=None):
+    def run_conversation(self, scenario_index=None, on_message=None, reset_inventory_first=True):
         """Run a full automated conversation using the CustomerAgent.
 
         Returns the list of trace IDs collected during this conversation.
         """
-        reset_inventory()
+        if reset_inventory_first:
+            reset_inventory()
         self.customer_agent.reset(scenario_index)
         thread_id = str(uuid.uuid4())
         trace_start = len(self.traces_of_latest_conversations)

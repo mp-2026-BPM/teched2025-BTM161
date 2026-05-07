@@ -48,8 +48,16 @@ def main():
         help="Export event logs after simulation",
     )
     parser.add_argument(
+        "--reset-inventory", action=argparse.BooleanOptionalAction, default=True,
+        help="Reset inventory before each trace (default: true). Use --no-reset-inventory to keep inventory state across traces.",
+    )
+    parser.add_argument(
         "--quiet", action="store_true",
         help="Minimal output: only trace numbers, scenarios, and summary",
+    )
+    parser.add_argument(
+        "--full-messages", action="store_true",
+        help="Print full message content instead of truncating to 200 characters",
     )
     parser.add_argument(
         "--log-level", type=str, default="warning",
@@ -64,8 +72,9 @@ def main():
 
     print("Initializing coffee shop...")
     shop = CoffeeShop()
-    shop.open_shop()
-    print(f"Coffee shop is open. Running {args.traces} trace(s).\n")
+    shop.open_shop(reset_inventory_first=args.reset_inventory)
+    print(f"Coffee shop is open. Running {args.traces} trace(s).")
+    print(f"Resetting inventory before each trace: {args.reset_inventory}\n")
 
     all_trace_ids = []
     for i in range(args.traces):
@@ -78,9 +87,14 @@ def main():
         else:
             def on_message(role, content):
                 prefix = "  [Customer]" if role == "customer" else "  [Agent]   "
-                print(f"{prefix} {content[:200]}")
+                body = content if args.full_messages else content[:200]
+                print(f"\n{prefix} {body}\n")
 
-        trace_ids = shop.run_conversation(scenario_index=idx, on_message=on_message)
+        trace_ids = shop.run_conversation(
+            scenario_index=idx, 
+            on_message=on_message,
+            reset_inventory_first=args.reset_inventory,
+        )
         all_trace_ids.extend(trace_ids)
         print(f"  Trace IDs: {trace_ids}\n")
 
