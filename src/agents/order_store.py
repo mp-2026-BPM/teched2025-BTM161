@@ -1,5 +1,6 @@
 import logging
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -68,6 +69,7 @@ def save_order(order: Order) -> None:
     """Persist an Order (insert or update)."""
     # may want to check for allowed status transitions here in the future
     is_new = order.id is None
+    order.last_modified = datetime.now(timezone.utc)
     with _write_lock:
         with Session(engine) as session:
             if not is_new:
