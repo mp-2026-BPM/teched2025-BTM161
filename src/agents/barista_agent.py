@@ -14,6 +14,7 @@ from .shared_components import (
     transfer_to_customer_service,
 )
 from .order_store import load_order, save_order, get_order
+from .context_isolation import create_context_isolation_hook
 
 
 class RemakeItemSchema(BaseModel):
@@ -128,4 +129,5 @@ def create_barista_agent(chat_llm, prompt=None):
         name="barista_agent",
         tools=tools,
         prompt=prompt,
+        pre_model_hook=create_context_isolation_hook("barista_agent"),
     )

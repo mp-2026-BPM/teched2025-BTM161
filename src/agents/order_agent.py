@@ -13,6 +13,7 @@ from .shared_components import (
 )
 from ..llm import bind_tools_sequential
 from .order_store import save_order, load_order, get_order
+from .context_isolation import create_context_isolation_hook
 
 
 class CustomerOrderItemSchema(BaseModel):
@@ -150,4 +151,5 @@ def create_order_agent(chat_llm, prompt=None):
         name="order_agent",
         tools=tools,
         prompt=prompt,
+        pre_model_hook=create_context_isolation_hook("order_agent"),
     )

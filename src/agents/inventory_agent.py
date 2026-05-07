@@ -15,6 +15,7 @@ from .order_store import (
     check_inventory_availability, check_and_update_stock,
     get_inventory_item, get_alternatives_from_db,
 )
+from .context_isolation import create_context_isolation_hook
 
 
 # INVENTORY AGENT TOOLS
@@ -127,4 +128,5 @@ def create_inventory_agent(chat_llm, prompt=None):
         name="inventory_agent",
         tools=tools,
         prompt=prompt,
+        pre_model_hook=create_context_isolation_hook("inventory_agent"),
     )

@@ -9,6 +9,7 @@ from .shared_components import (
     OrderIdSchema, OrderStatus,
 )
 from ..llm import bind_tools_sequential
+from .context_isolation import create_context_isolation_hook
 from pydantic import BaseModel, Field
 import json
 
@@ -93,4 +94,5 @@ def create_customer_service_agent(chat_llm, prompt=None):
         name="customer_service_agent",
         tools=tools,
         prompt=prompt,
+        pre_model_hook=create_context_isolation_hook("customer_service_agent"),
     )
