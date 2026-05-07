@@ -15,11 +15,24 @@ from src.styles import ENHANCED_CSS
 
 # Configure the parent logger for the entire coffee_shop namespace.
 # Child loggers (e.g. coffee_shop.handoff) inherit this level and handler.
+class _PaddedNameFormatter(logging.Formatter):
+    """Left-pads %(name)s to the widest logger name seen so far, so child loggers stay aligned."""
+    _max_width = 0
+
+    def format(self, record):
+        type(self)._max_width = max(self._max_width, len(record.name))
+        original = record.name
+        record.name = record.name.ljust(self._max_width)
+        try:
+            return super().format(record)
+        finally:
+            record.name = original
+
 _coffee_shop_logger = logging.getLogger("coffee_shop")
 _coffee_shop_logger.setLevel(logging.INFO)
 if not _coffee_shop_logger.handlers:
     _handler = logging.StreamHandler()
-    _handler.setFormatter(logging.Formatter("[%(levelname)s] %(name)s — %(message)s"))
+    _handler.setFormatter(_PaddedNameFormatter("[%(levelname)-8s] %(name)s — %(message)s"))
     _coffee_shop_logger.addHandler(_handler)
 
 # Import after logger setup so child loggers in src.agents inherit the configured level/handler.
