@@ -116,11 +116,13 @@ class ConversationRunner:
                     continue
 
                 if isinstance(node_data, dict):
+                    resolved_agent = agent_name or node_data.get("active_agent") or "unknown"
+
                     if "handoff_context" in node_data and node_data["handoff_context"]:
                         hc = node_data["handoff_context"]
                         self.event_bus.publish(DashboardEvent(
                             event_type=EventType.HANDOFF,
-                            agent_name=hc.get("from_agent", agent_name or "unknown"),
+                            agent_name=hc.get("from_agent", resolved_agent),
                             handoff_context=hc,
                             target_agent=node_data.get("active_agent"),
                         ))
@@ -129,21 +131,27 @@ class ConversationRunner:
                         (k for k in node_data if "messages" in k), None
                     )
                     if msgs_key:
-                        for msg in node_data[msgs_key]:
-                            msg_id = f"{id(msg)}"
-                            if msg_id in seen:
-                                continue
-                            seen.add(msg_id)
-                            self._process_message(msg, agent_name or "unknown")
+                        msgs_list = node_data[msgs_key]
+                        if not msgs_list:
+                            continue
+                        msg = msgs_list[-1]
+                        content = getattr(msg, "content", "")
+                        name = getattr(msg, "name", "")
+                        msg_id = f"{type(msg).__name__}:{name}:{content}"
+                        if msg_id in seen:
+                            continue
+                        seen.add(msg_id)
+                        msg_agent = getattr(msg, "name", None) or resolved_agent
+                        self._process_message(msg, msg_agent)
 
-                            if (
-                                isinstance(msg, AIMessage)
-                                and msg.content
-                                and not msg.tool_calls
-                                and getattr(msg, "name", None)
-                                in ("order_agent", "barista_agent", "customer_service_agent")
-                            ):
-                                last_agent_message = msg.content
+                        if (
+                            isinstance(msg, AIMessage)
+                            and msg.content
+                            and not msg.tool_calls
+                            and getattr(msg, "name", None)
+                            in ("order_agent", "barista_agent", "customer_service_agent")
+                        ):
+                            last_agent_message = msg.content
 
         if current_agent:
             self.event_bus.publish(DashboardEvent(

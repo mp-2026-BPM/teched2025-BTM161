@@ -95,7 +95,8 @@ def create_dashboard():
         f"{i}: {s[:50]}": i for i, s in enumerate(CUSTOMER_SCENARIOS)
     }
     scenario_select = pn.widgets.Select(
-        name="Scenario", options=scenario_options, sizing_mode="stretch_width"
+        name="", options=scenario_options, sizing_mode="stretch_width",
+        margin=(0, 0, 5, 0),
     )
     run_button = pn.widgets.Button(
         name="Run Conversation", button_type="primary", sizing_mode="stretch_width"
@@ -128,12 +129,18 @@ def create_dashboard():
             status_indicator.value = False
 
     sidebar = pn.Column(
-        pn.pane.Markdown("# Agent Observatory", margin=(0, 0, 20, 0)),
+        pn.pane.HTML(
+            '<h2 style="margin:0 0 24px 0;padding:0;">Agent Observatory</h2>',
+            sizing_mode="stretch_width",
+        ),
+        pn.pane.HTML('<label style="font-size:13px;font-weight:500;">Scenario</label>',
+                     sizing_mode="stretch_width", margin=(0, 0, 4, 0)),
         scenario_select,
         run_button,
         pn.Row(status_indicator, pn.pane.Markdown("", width=10)),
         pn.layout.Divider(),
-        pn.pane.Markdown("### Conversation Log", margin=(0, 0, 12, 0)),
+        pn.pane.HTML('<label style="font-size:14px;font-weight:600;margin-bottom:8px;display:block;">Conversation Log</label>',
+                     sizing_mode="stretch_width"),
         conversation_log,
         width=340,
         sizing_mode="stretch_height",

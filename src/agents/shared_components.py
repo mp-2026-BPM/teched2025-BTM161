@@ -15,6 +15,22 @@ from sqlmodel import SQLModel, Field as SQLField, Relationship, Column, JSON
 logger = logging.getLogger("coffee_shop.handoff")
 
 
+def _resolve_from_agent(state: dict) -> str:
+    """Determine which agent is calling this tool.
+
+    Checks active_agent first (available when ToolNode gets parent state),
+    then falls back to the .name attribute on the last AIMessage.
+    """
+    active = state.get("active_agent")
+    if active and active != "unknown":
+        return active
+    for msg in reversed(state.get("messages", [])):
+        name = getattr(msg, "name", None)
+        if name and name.endswith("_agent"):
+            return name
+    return "unknown"
+
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -151,7 +167,7 @@ def transfer_to_inventory(
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
     """Transfer to inventory agent to check item availability."""
-    from_agent = state.get("active_agent", "unknown")
+    from_agent = _resolve_from_agent(state)
     logger.debug("handoff %s -> inventory_agent | summary=%s", from_agent, context_summary[:80])
     tool_message = ToolMessage(
         content=f"Successfully transferred to inventory_agent. Context: {context_summary}",
@@ -181,7 +197,7 @@ def transfer_to_barista(
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
     """Transfer to barista agent to prepare the order."""
-    from_agent = state.get("active_agent", "unknown")
+    from_agent = _resolve_from_agent(state)
     logger.debug("handoff %s -> barista_agent | summary=%s", from_agent, context_summary[:80])
     tool_message = ToolMessage(
         content=f"Successfully transferred to barista_agent. Context: {context_summary}",
@@ -211,7 +227,7 @@ def transfer_to_customer_service(
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
     """Transfer to customer service agent for issues, complaints, or order modifications."""
-    from_agent = state.get("active_agent", "unknown")
+    from_agent = _resolve_from_agent(state)
     logger.debug("handoff %s -> customer_service_agent | summary=%s", from_agent, context_summary[:80])
     tool_message = ToolMessage(
         content=f"Successfully transferred to customer_service_agent. Context: {context_summary}",
@@ -241,7 +257,7 @@ def transfer_to_order_agent(
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
     """Transfer back to order agent for new or modified orders."""
-    from_agent = state.get("active_agent", "unknown")
+    from_agent = _resolve_from_agent(state)
     logger.debug("handoff %s -> order_agent | summary=%s", from_agent, context_summary[:80])
     tool_message = ToolMessage(
         content=f"Successfully transferred to order_agent. Context: {context_summary}",
