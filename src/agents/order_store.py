@@ -43,9 +43,15 @@ def init_db() -> None:
         first = session.exec(select(MenuItem)).first()
         if first is None:
             for key, item in MENU.items():
-                session.add(MenuItem(
-                    name=key, price=item.price, stock=item.stock, category=item.category,
-                ))
+                session.add(
+                    MenuItem(
+                        name=key,
+                        price=item.price,
+                        stock=item.stock,
+                        category=item.category,
+                        last_modified=datetime.now(timezone.utc),
+                    )
+                )
             session.commit()
 
 
@@ -154,26 +160,31 @@ def check_and_update_stock(order: Order) -> list[dict]:
     items_report = []
     with _write_lock:
         with Session(engine) as session:
-            for oi in order.items:
-                item = session.get(MenuItem, oi.name)
+            for order_item in order.items:
+                item = session.get(MenuItem, order_item.name)
                 if item is None:
-                    raise KeyError(f"Item '{oi.name}' not found in inventory.")
+                    raise KeyError(f"Item '{order_item.name}' not found in inventory.")
                 stock_before = item.stock
-                if stock_before < oi.quantity:
+                if stock_before < order_item.quantity:
                     raise ValueError(
-                        f"Insufficient stock for '{oi.name}': "
-                        f"need {oi.quantity}, have {stock_before}"
+                        f"Insufficient stock for '{order_item.name}': "
+                        f"need {order_item.quantity}, have {stock_before}"
                     )
-                item.stock -= oi.quantity
-                items_report.append({
-                    "name": oi.name,
-                    "quantity_removed": oi.quantity,
-                    "previous_stock": stock_before,
-                    "new_stock": stock_before - oi.quantity,
-                })
+                item.stock -= order_item.quantity
+                item.last_modified = datetime.now(timezone.utc)
+                items_report.append(
+                    {
+                        "name": order_item.name,
+                        "quantity_removed": order_item.quantity,
+                        "previous_stock": stock_before,
+                        "new_stock": stock_before - order_item.quantity,
+                    }
+                )
             session.commit()
     if items_report:
-        deductions = ", ".join(f"{r['name']} {r['previous_stock']}->{r['new_stock']}" for r in items_report)
+        deductions = ", ".join(
+            f"{r['name']} {r['previous_stock']}->{r['new_stock']}" for r in items_report
+        )
         logger.debug("Stock deducted for %s: %s", order.order_id_str, deductions)
     return items_report
 
@@ -186,10 +197,17 @@ def reset_inventory() -> None:
                 item = session.get(MenuItem, key)
                 if item:
                     item.stock = defaults.stock
+                    item.last_modified = datetime.now(timezone.utc)
                 else:
-                    session.add(MenuItem(
-                        name=key, price=defaults.price, stock=defaults.stock, category=defaults.category,
-                    ))
+                    session.add(
+                        MenuItem(
+                            name=key,
+                            price=defaults.price,
+                            stock=defaults.stock,
+                            category=defaults.category,
+                            last_modified=datetime.now(timezone.utc),
+                        )
+                    )
             session.commit()
 
 
@@ -200,6 +218,7 @@ def set_item_stock(name: str, stock: int) -> None:
             item = session.get(MenuItem, name)
             if item:
                 item.stock = stock
+                item.last_modified = datetime.now(timezone.utc)
                 session.commit()
 
 
