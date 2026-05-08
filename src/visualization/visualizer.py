@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from pm4py.objects.ocel.importer.jsonocel import importer as jsonocel_importer
@@ -6,6 +7,28 @@ from pm4py.visualization.ocel.ocdfg import visualizer as ocdfg_visualizer
 from pm4py.algo.discovery.ocel.ocpn import algorithm as ocpn_discovery
 from pm4py.visualization.ocel.ocpn import visualizer as ocpn_visualizer
 from pm4py.visualization.ocel.eve_to_obj_types import visualizer as eto_visualizer
+
+
+def force_bw(gviz):
+    """Rewrite all color attributes to black/white based on actual body format."""
+    new_body = []
+    for line in gviz.body:
+        # Replace all hex color values for color/fillcolor/fontcolor
+        line = re.sub(r'\b(color)="#[0-9a-fA-F]+"', r"\1=black", line)
+        line = re.sub(r'\b(fillcolor)="#[0-9a-fA-F]+"', r"\1=white", line)
+        line = re.sub(r'\b(fontcolor)="#[0-9a-fA-F]+"', r"\1=black", line)
+
+        # Filled nodes (style=filled) with white fill need black text — already default.
+        # But filled nodes that had a colored fill now get white fill, so text is fine.
+        # Exception: blank-label nodes (label=" ") are Petri net places/transitions —
+        # keep them visually solid by giving them black fill instead of white.
+        if "style=filled" in line and 'label=" "' in line:
+            line = re.sub(r"\bfillcolor=white\b", "fillcolor=black", line)
+
+        new_body.append(line)
+
+    gviz.body = new_body
+    return gviz
 
 
 @dataclass
@@ -51,8 +74,10 @@ class Visualizer:
     def _export_ocdfg(self, ocel) -> Path:
         """Expot an object centric directly-follows graph visualization."""
         ocdfg = ocdfg_discovery.apply(ocel)
-        gviz = ocdfg_visualizer.apply(
-            ocdfg, parameters={"format": self.config.export_format}
+        gviz = force_bw(
+            ocdfg_visualizer.apply(
+                ocdfg, parameters={"format": self.config.export_format}
+            )
         )
         target = self.config.out_dir / f"oc-dfg.{self.config.export_format}"
         ocdfg_visualizer.save(gviz, str(target))
@@ -61,8 +86,10 @@ class Visualizer:
     def _export_ocpn(self, ocel) -> Path:
         """Export an object centric Petri net visualization."""
         ocpn = ocpn_discovery.apply(ocel)
-        gviz = ocpn_visualizer.apply(
-            ocpn, parameters={"format": self.config.export_format}
+        gviz = force_bw(
+            ocpn_visualizer.apply(
+                ocpn, parameters={"format": self.config.export_format}
+            )
         )
         target = self.config.out_dir / f"oc-pn.{self.config.export_format}"
         ocpn_visualizer.save(gviz, str(target))
