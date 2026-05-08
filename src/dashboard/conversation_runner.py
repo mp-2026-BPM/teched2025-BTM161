@@ -11,21 +11,25 @@ from .event_bus import EventBus, DashboardEvent, EventType
 
 logger = logging.getLogger("coffee_shop.dashboard")
 
+MAX_CONVERSATION_TURNS = 30
+
 
 class ConversationRunner:
     def __init__(self, shop: CoffeeShop, event_bus: EventBus):
         self.shop = shop
         self.event_bus = event_bus
         self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
         self.is_running = False
 
     def start(self, scenario_index=None):
-        if self.is_running:
-            return
+        with self._lock:
+            if self.is_running:
+                return
+            self.is_running = True
         self._thread = threading.Thread(
             target=self._run, args=(scenario_index,), daemon=True
         )
-        self.is_running = True
         self._thread.start()
 
     def _run(self, scenario_index):
@@ -39,7 +43,8 @@ class ConversationRunner:
                 content=f"ERROR: {e}",
             ))
         finally:
-            self.is_running = False
+            with self._lock:
+                self.is_running = False
 
     def _run_conversation(self, scenario_index):
         reset_inventory()
@@ -64,7 +69,13 @@ class ConversationRunner:
             content=message,
         ))
 
+        turns = 0
         while message:
+            if turns >= MAX_CONVERSATION_TURNS:
+                logger.warning("Conversation reached %d turns, stopping", MAX_CONVERSATION_TURNS)
+                break
+            turns += 1
+
             agent_reply = self._stream_with_events(thread_id, message)
             if not agent_reply:
                 break
@@ -84,74 +95,93 @@ class ConversationRunner:
 
     def _stream_with_events(self, thread_id: str, message: str) -> str | None:
         config = self.shop._get_config(thread_id)
-        stream = self.shop.app.stream(
-            {"messages": [{"role": "user", "content": message}]},
-            config,
-            subgraphs=True,
-        )
+
+        try:
+            stream = self.shop.app.stream(
+                {"messages": [{"role": "user", "content": message}], "handoff_context": None},
+                config,
+                subgraphs=True,
+            )
+        except Exception as e:
+            logger.exception("Failed to start stream")
+            self.event_bus.publish(DashboardEvent(
+                event_type=EventType.AGENT_MESSAGE,
+                agent_name="system",
+                content=f"Stream error: {e}",
+            ))
+            return None
 
         last_agent_message = None
         seen = set()
         current_agent = None
 
-        for ns, update in stream:
-            agent_name = self._parse_agent_name(ns)
+        try:
+            for ns, update in stream:
+                agent_name = self._parse_agent_name(ns)
 
-            if agent_name and agent_name != current_agent:
-                if current_agent:
+                if agent_name and agent_name != current_agent:
+                    if current_agent:
+                        self.event_bus.publish(DashboardEvent(
+                            event_type=EventType.AGENT_THINKING,
+                            agent_name=current_agent,
+                            content="idle",
+                        ))
+                    current_agent = agent_name
                     self.event_bus.publish(DashboardEvent(
                         event_type=EventType.AGENT_THINKING,
-                        agent_name=current_agent,
-                        content="idle",
+                        agent_name=agent_name,
+                        content="thinking",
                     ))
-                current_agent = agent_name
-                self.event_bus.publish(DashboardEvent(
-                    event_type=EventType.AGENT_THINKING,
-                    agent_name=agent_name,
-                    content="thinking",
-                ))
 
-            for node, node_data in update.items():
-                if node_data is None:
-                    continue
+                for node, node_data in update.items():
+                    if node_data is None:
+                        continue
 
-                if isinstance(node_data, dict):
-                    resolved_agent = agent_name or node_data.get("active_agent") or "unknown"
+                    if isinstance(node_data, dict):
+                        resolved_agent = agent_name or node_data.get("active_agent") or "unknown"
 
-                    if "handoff_context" in node_data and node_data["handoff_context"]:
-                        hc = node_data["handoff_context"]
-                        self.event_bus.publish(DashboardEvent(
-                            event_type=EventType.HANDOFF,
-                            agent_name=hc.get("from_agent", resolved_agent),
-                            handoff_context=hc,
-                            target_agent=node_data.get("active_agent"),
-                        ))
+                        if "handoff_context" in node_data and node_data["handoff_context"]:
+                            hc = node_data["handoff_context"]
+                            self.event_bus.publish(DashboardEvent(
+                                event_type=EventType.HANDOFF,
+                                agent_name=hc.get("from_agent", resolved_agent),
+                                handoff_context=hc,
+                                target_agent=node_data.get("active_agent"),
+                            ))
 
-                    msgs_key = next(
-                        (k for k in node_data if "messages" in k), None
-                    )
-                    if msgs_key:
-                        msgs_list = node_data[msgs_key]
-                        if not msgs_list:
-                            continue
-                        msg = msgs_list[-1]
-                        content = getattr(msg, "content", "")
-                        name = getattr(msg, "name", "")
-                        msg_id = f"{type(msg).__name__}:{name}:{content}"
-                        if msg_id in seen:
-                            continue
-                        seen.add(msg_id)
-                        msg_agent = getattr(msg, "name", None) or resolved_agent
-                        self._process_message(msg, msg_agent)
+                        msgs_key = next(
+                            (k for k in node_data if k == "messages"), None
+                        )
+                        if msgs_key:
+                            msgs_list = node_data[msgs_key]
+                            if not msgs_list:
+                                continue
+                            msg = msgs_list[-1]
+                            content = getattr(msg, "content", "")
+                            name = getattr(msg, "name", "")
+                            msg_uid = getattr(msg, "id", "") or getattr(msg, "tool_call_id", "")
+                            msg_id = f"{type(msg).__name__}:{name}:{msg_uid}:{content}"
+                            if msg_id in seen:
+                                continue
+                            seen.add(msg_id)
+                            msg_agent = getattr(msg, "name", None) or resolved_agent
+                            self._process_message(msg, msg_agent)
 
-                        if (
-                            isinstance(msg, AIMessage)
-                            and msg.content
-                            and not msg.tool_calls
-                            and getattr(msg, "name", None)
-                            in ("order_agent", "barista_agent", "customer_service_agent")
-                        ):
-                            last_agent_message = msg.content
+                            if (
+                                isinstance(msg, AIMessage)
+                                and msg.content
+                                and not msg.tool_calls
+                                and getattr(msg, "name", None)
+                                in ("order_agent", "inventory_agent", "barista_agent", "customer_service_agent")
+                            ):
+                                last_agent_message = msg.content
+        except Exception as e:
+            logger.exception("Error during stream iteration")
+            self.event_bus.publish(DashboardEvent(
+                event_type=EventType.AGENT_MESSAGE,
+                agent_name="system",
+                content=f"Stream error: {e}",
+            ))
 
         if current_agent:
             self.event_bus.publish(DashboardEvent(

@@ -258,7 +258,7 @@ class CoffeeShop():
                     if isinstance(node_updates, tuple):
                         continue
                     messages_key = next(
-                        (k for k in node_updates.keys() if "messages" in k), None
+                        (k for k in node_updates.keys() if k == "messages"), None
                     )
                     if messages_key is not None:
                         message = node_updates[messages_key][-1]
@@ -269,7 +269,7 @@ class CoffeeShop():
                             agent_name = getattr(message, 'name', 'unknown')
                             content = getattr(message, 'content', str(message))
 
-                            if agent_name in ('order_agent', 'barista_agent', 'customer_service_agent') and content:
+                            if agent_name in ('order_agent', 'inventory_agent', 'barista_agent', 'customer_service_agent') and content:
                                 self._last_agent_message = normalize_content(content)
 
                             yield (agent_name, content)
@@ -289,7 +289,7 @@ class CoffeeShop():
         self._last_agent_message = None
 
         stream = self.app.stream(
-            {"messages": [{"role": "user", "content": message}]},
+            {"messages": [{"role": "user", "content": message}], "handoff_context": None},
             config,
             subgraphs=True,
         )
@@ -375,7 +375,8 @@ class CoffeeShop():
                                 "role": "user",
                                 "content": prompt,
                             }
-                        ]
+                        ],
+                        "handoff_context": None,
                     },
                     config,
                     subgraphs=True,

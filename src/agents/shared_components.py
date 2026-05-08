@@ -168,7 +168,7 @@ def transfer_to_inventory(
 ) -> Command:
     """Transfer to inventory agent to check item availability."""
     from_agent = _resolve_from_agent(state)
-    logger.debug("handoff %s -> inventory_agent | summary=%s", from_agent, context_summary[:80])
+    logger.debug("handoff %s -> inventory_agent | summary=%s", from_agent, str(context_summary)[:80])
     tool_message = ToolMessage(
         content=f"Successfully transferred to inventory_agent. Context: {context_summary}",
         name="transfer_to_inventory",
@@ -178,7 +178,7 @@ def transfer_to_inventory(
         goto="inventory_agent",
         graph=Command.PARENT,
         update={
-            "messages": [*state["messages"], tool_message],
+            "messages": [tool_message],
             "active_agent": "inventory_agent",
             "handoff_context": {
                 "from_agent": from_agent,
@@ -198,7 +198,7 @@ def transfer_to_barista(
 ) -> Command:
     """Transfer to barista agent to prepare the order."""
     from_agent = _resolve_from_agent(state)
-    logger.debug("handoff %s -> barista_agent | summary=%s", from_agent, context_summary[:80])
+    logger.debug("handoff %s -> barista_agent | summary=%s", from_agent, str(context_summary)[:80])
     tool_message = ToolMessage(
         content=f"Successfully transferred to barista_agent. Context: {context_summary}",
         name="transfer_to_barista",
@@ -208,7 +208,7 @@ def transfer_to_barista(
         goto="barista_agent",
         graph=Command.PARENT,
         update={
-            "messages": [*state["messages"], tool_message],
+            "messages": [tool_message],
             "active_agent": "barista_agent",
             "handoff_context": {
                 "from_agent": from_agent,
@@ -228,7 +228,7 @@ def transfer_to_customer_service(
 ) -> Command:
     """Transfer to customer service agent for issues, complaints, or order modifications."""
     from_agent = _resolve_from_agent(state)
-    logger.debug("handoff %s -> customer_service_agent | summary=%s", from_agent, context_summary[:80])
+    logger.debug("handoff %s -> customer_service_agent | summary=%s", from_agent, str(context_summary)[:80])
     tool_message = ToolMessage(
         content=f"Successfully transferred to customer_service_agent. Context: {context_summary}",
         name="transfer_to_customer_service",
@@ -238,7 +238,7 @@ def transfer_to_customer_service(
         goto="customer_service_agent",
         graph=Command.PARENT,
         update={
-            "messages": [*state["messages"], tool_message],
+            "messages": [tool_message],
             "active_agent": "customer_service_agent",
             "handoff_context": {
                 "from_agent": from_agent,
@@ -258,7 +258,7 @@ def transfer_to_order_agent(
 ) -> Command:
     """Transfer back to order agent for new or modified orders."""
     from_agent = _resolve_from_agent(state)
-    logger.debug("handoff %s -> order_agent | summary=%s", from_agent, context_summary[:80])
+    logger.debug("handoff %s -> order_agent | summary=%s", from_agent, str(context_summary)[:80])
     tool_message = ToolMessage(
         content=f"Successfully transferred to order_agent. Context: {context_summary}",
         name="transfer_to_order_agent",
@@ -268,7 +268,7 @@ def transfer_to_order_agent(
         goto="order_agent",
         graph=Command.PARENT,
         update={
-            "messages": [*state["messages"], tool_message],
+            "messages": [tool_message],
             "active_agent": "order_agent",
             "handoff_context": {
                 "from_agent": from_agent,

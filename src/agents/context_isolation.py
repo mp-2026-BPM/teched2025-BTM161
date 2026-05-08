@@ -48,12 +48,13 @@ def create_context_isolation_hook(agent_name: str):
         messages = state.get("messages", [])
         handoff_context = state.get("handoff_context", None)
 
-        own_messages = _extract_current_turn_messages(messages, agent_name)
         logger.debug("%s: %d own messages, handoff_context=%s",
-                     agent_name, len(own_messages),
-                     handoff_context.get("from_agent") if handoff_context else None)
+                     agent_name, len(messages),
+                     handoff_context.get("from_agent") if isinstance(handoff_context, dict) else None)
 
-        if handoff_context and handoff_context.get("from_agent"):
+        own_messages = _extract_current_turn_messages(messages, agent_name)
+
+        if isinstance(handoff_context, dict) and handoff_context.get("from_agent"):
             briefing = HumanMessage(content=(
                 f"[Handoff from {handoff_context['from_agent']}]\n"
                 f"Context: {handoff_context['context_summary']}\n"

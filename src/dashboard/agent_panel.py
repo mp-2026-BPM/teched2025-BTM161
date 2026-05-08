@@ -5,8 +5,6 @@ import time
 import param
 import panel as pn
 
-from src.agents.context_isolation import _extract_current_turn_messages
-
 
 class AgentPanel(param.Parameterized):
     agent_name = param.String()
@@ -86,12 +84,16 @@ class AgentPanel(param.Parameterized):
 
     def add_message(self, role: str, content: str):
         ts = time.strftime("%H:%M:%S")
-        self.messages = self.messages + [{"role": role, "content": content, "ts": ts}]
+        msgs = list(self.messages)
+        msgs.append({"role": role, "content": content, "ts": ts})
+        self.messages = msgs
         self._render_messages()
 
     def add_tool_call(self, name: str, args: dict | None):
         ts = time.strftime("%H:%M:%S")
-        self.tool_calls = self.tool_calls + [{"name": name, "args": args, "result": None, "ts": ts}]
+        tcs = list(self.tool_calls)
+        tcs.append({"name": name, "args": args, "result": None, "ts": ts})
+        self.tool_calls = tcs
         self._render_tool_calls()
 
     def set_tool_result(self, name: str, result: str):
