@@ -52,6 +52,7 @@ class MenuItem(SQLModel, table=True):
     price: float
     stock: int
     category: str
+    last_modified: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class OrderItem(SQLModel, table=True):
@@ -84,6 +85,7 @@ class Order(SQLModel, table=True):
     )
     total: float = 0.0
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
+    last_modified: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
 
     items: List[OrderItem] = Relationship(
         back_populates="order",
