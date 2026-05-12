@@ -68,11 +68,11 @@ class TestHandoffToolInjection(unittest.TestCase):
         self.assertEqual(cmd.update["handoff_context"]["from_agent"], "order_agent")
         self.assertEqual(cmd.update["handoff_context"]["context_summary"],
                          "Customer ordered 1 espresso, ORD0001 created.")
-        # Messages must be forwarded to parent state (including a ToolMessage)
+        # Messages must contain only the new ToolMessage (not the full state copy)
         self.assertIn("messages", cmd.update)
         forwarded_msgs = cmd.update["messages"]
-        self.assertTrue(len(forwarded_msgs) >= 2)  # original AI msg + ToolMessage
-        tool_msg = forwarded_msgs[-1]
+        self.assertEqual(len(forwarded_msgs), 1)
+        tool_msg = forwarded_msgs[0]
         self.assertEqual(tool_msg.name, "transfer_to_inventory")
         self.assertIn("Successfully transferred", tool_msg.content)
 
