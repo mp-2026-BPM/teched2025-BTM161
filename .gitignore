@@ -8,6 +8,10 @@ mlruns/
 generated_event_log/
 generated_ocel/
 
+generated_visualizations/
+
+event_logs/
+
 # Python cache
 __pycache__/
 *.pyc
