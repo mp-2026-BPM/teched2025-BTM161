@@ -6,6 +6,10 @@ import panel as pn
 
 from src.coffee_shop import CoffeeShop
 from src.agents import CUSTOMER_SCENARIOS
+from src.agents.order_agent import DEFAULT_PROMPT as ORDER_PROMPT, DEFAULT_TOOL_NAMES as ORDER_TOOLS
+from src.agents.inventory_agent import DEFAULT_PROMPT as INVENTORY_PROMPT, DEFAULT_TOOL_NAMES as INVENTORY_TOOLS
+from src.agents.barista_agent import DEFAULT_PROMPT as BARISTA_PROMPT, DEFAULT_TOOL_NAMES as BARISTA_TOOLS
+from src.agents.customer_service_agent import DEFAULT_PROMPT as CS_PROMPT, DEFAULT_TOOL_NAMES as CS_TOOLS
 from .event_bus import EventBus, EventType
 from .agent_panel import AgentPanel
 from .conversation_runner import ConversationRunner
@@ -13,56 +17,10 @@ from .conversation_runner import ConversationRunner
 logger = logging.getLogger("coffee_shop.dashboard")
 
 AGENT_REGISTRY = {
-    "order_agent": {
-        "prompt": (
-            "You are a friendly, chatty order-taking agent at a coffee shop.\n\n"
-            "Your conversation flow:\n"
-            "1. Greet the customer and take their drink order.\n"
-            "2. If they don't specify a size, ask: \"Would you like that as a large or normal?\"\n"
-            "3. Once drinks are settled, ask if they'd like something to eat as well.\n"
-            "4. Confirm the full order and tell them the total price.\n"
-            "5. Process the order using process_order, then IMMEDIATELY transfer to the inventory agent.\n\n"
-            "After you process an order, you MUST transfer to the inventory agent."
-        ),
-        "tools": ["process_order", "calculate_total", "get_order",
-                  "transfer_to_inventory", "transfer_to_customer_service"],
-    },
-    "inventory_agent": {
-        "prompt": (
-            "You are the inventory management agent for a coffee shop.\n\n"
-            "Your job:\n"
-            "- Check item availability for an order using check_inventory.\n"
-            "- If all items are available: update stock levels with update_stock, "
-            "then MUST transfer to the barista agent.\n"
-            "- If items are unavailable: suggest alternatives using get_alternatives, "
-            "then transfer to customer service."
-        ),
-        "tools": ["check_inventory", "update_stock", "get_alternatives", "get_order",
-                  "transfer_to_barista", "transfer_to_customer_service"],
-    },
-    "barista_agent": {
-        "prompt": (
-            "You are a skilled barista agent responsible for drink and food preparation.\n\n"
-            "Your job:\n"
-            "- Prepare the order using prepare_order.\n"
-            "- If preparation succeeds: inform the customer their order is ready.\n"
-            "- If preparation fails: attempt a remake with remake_order_item. "
-            "If that also fails, transfer to customer service."
-        ),
-        "tools": ["prepare_order", "remake_order_item", "estimate_prep_time",
-                  "get_order", "transfer_to_customer_service"],
-    },
-    "customer_service_agent": {
-        "prompt": (
-            "You are a customer service agent focused on customer satisfaction.\n\n"
-            "Your job:\n"
-            "- Handle complaints, failed preparations, and unavailable items with empathy.\n"
-            "- Offer full or partial refunds when appropriate.\n"
-            "- Help the customer decide on next steps (new order, alternative items, or refund)."
-        ),
-        "tools": ["offer_refund", "offer_partial_refund", "get_order",
-                  "transfer_to_order_agent", "transfer_to_barista", "transfer_to_inventory"],
-    },
+    "order_agent": {"prompt": ORDER_PROMPT, "tools": ORDER_TOOLS},
+    "inventory_agent": {"prompt": INVENTORY_PROMPT, "tools": INVENTORY_TOOLS},
+    "barista_agent": {"prompt": BARISTA_PROMPT, "tools": BARISTA_TOOLS},
+    "customer_service_agent": {"prompt": CS_PROMPT, "tools": CS_TOOLS},
 }
 
 

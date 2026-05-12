@@ -100,26 +100,32 @@ def get_alternatives(item_name: str) -> str:
     })
 
 
+DEFAULT_PROMPT = """\
+You are the inventory management agent for a coffee shop.
+
+Your job:
+- Check item availability for an order using check_inventory.
+- If all items are available: update stock levels with update_stock, then MUST transfer to the barista agent.
+- If items are unavailable: suggest alternatives using get_alternatives, then transfer to customer service.
+
+After checking inventory and updating stock, you MUST transfer immediately.
+Do NOT tell the customer the order is ready — you only handle stock.
+
+You can transfer to:
+- Barista agent: when all items are confirmed available and stock is updated
+- Customer service agent: when items are unavailable and need resolution"""
+
+DEFAULT_TOOLS = [check_inventory, update_stock, get_alternatives, get_order,
+                 transfer_to_barista, transfer_to_customer_service]
+DEFAULT_TOOL_NAMES = [t.name for t in DEFAULT_TOOLS]
+
+
 def create_inventory_agent(chat_llm, prompt=None):
     """Create and return the inventory agent."""
     if not prompt:
-        prompt = """You are the inventory management agent for a coffee shop.
+        prompt = DEFAULT_PROMPT
 
-        Your job:
-        - Check item availability for an order using check_inventory.
-        - If all items are available: update stock levels with update_stock, then MUST transfer to the barista agent.
-        - If items are unavailable: suggest alternatives using get_alternatives, then transfer to customer service.
-
-        After checking inventory and updating stock, you MUST transfer immediately.
-        Do NOT tell the customer the order is ready — you only handle stock.
-
-        You can transfer to:
-        - Barista agent: when all items are confirmed available and stock is updated
-        - Customer service agent: when items are unavailable and need resolution
-        """
-
-    tools = [check_inventory, update_stock, get_alternatives, get_order,
-             transfer_to_barista, transfer_to_customer_service]
+    tools = list(DEFAULT_TOOLS)
 
     llm_with_tools = bind_tools_sequential(chat_llm, tools)
 

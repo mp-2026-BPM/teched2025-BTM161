@@ -104,23 +104,29 @@ def estimate_prep_time(order_id: str) -> str:
     return f"Estimated preparation time for Order {order_id}: {estimated_time:.1f} minutes ({total_items} item(s))"
 
 
+DEFAULT_PROMPT = """\
+You are a skilled barista agent responsible for drink and food preparation.
+
+Your job:
+- Prepare the order using prepare_order.
+- If preparation succeeds: inform the customer their order is ready. Your job is done.
+- If preparation fails: attempt a remake with remake_order_item. If that also fails, transfer to customer service.
+
+You can transfer to:
+- Customer service agent: when preparation fails and cannot be resolved by remaking
+
+Take pride in your craft. If something goes wrong, be honest about it."""
+
+DEFAULT_TOOLS = [prepare_order, remake_order_item, estimate_prep_time, get_order, transfer_to_customer_service]
+DEFAULT_TOOL_NAMES = [t.name for t in DEFAULT_TOOLS]
+
+
 def create_barista_agent(chat_llm, prompt=None):
     """Create and return the barista agent."""
     if not prompt:
-        prompt = """You are a skilled barista agent responsible for drink and food preparation.
+        prompt = DEFAULT_PROMPT
 
-        Your job:
-        - Prepare the order using prepare_order.
-        - If preparation succeeds: inform the customer their order is ready. Your job is done.
-        - If preparation fails: attempt a remake with remake_order_item. If that also fails, transfer to customer service.
-
-        You can transfer to:
-        - Customer service agent: when preparation fails and cannot be resolved by remaking
-
-        Take pride in your craft. If something goes wrong, be honest about it.
-        """
-
-    tools = [prepare_order, remake_order_item, estimate_prep_time, get_order, transfer_to_customer_service]
+    tools = list(DEFAULT_TOOLS)
 
     llm_with_tools = bind_tools_sequential(chat_llm, tools)
 

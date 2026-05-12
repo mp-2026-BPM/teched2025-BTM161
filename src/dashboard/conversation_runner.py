@@ -160,7 +160,10 @@ class ConversationRunner:
                             content = getattr(msg, "content", "")
                             name = getattr(msg, "name", "")
                             msg_uid = getattr(msg, "id", "") or getattr(msg, "tool_call_id", "")
-                            msg_id = f"{type(msg).__name__}:{name}:{msg_uid}:{content}"
+                            if msg_uid:
+                                msg_id = f"{type(msg).__name__}:{msg_uid}"
+                            else:
+                                msg_id = f"{type(msg).__name__}:{name}:{content}"
                             if msg_id in seen:
                                 continue
                             seen.add(msg_id)

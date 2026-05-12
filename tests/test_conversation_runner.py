@@ -160,6 +160,34 @@ class TestStreamDeduplicatesMessages(unittest.TestCase):
         self.assertEqual(len(agent_msgs), 1)
 
 
+class TestSameContentDifferentIdNotDeduplicated(unittest.TestCase):
+    """Test 36b: Two messages with same content but different IDs are both dispatched."""
+
+    def test_same_content_different_id(self):
+        shop = _make_mock_shop()
+
+        msg1 = AIMessage(content="OK", name="order_agent", id="msg-aaa")
+        msg2 = AIMessage(content="OK", name="order_agent", id="msg-bbb")
+
+        def stream_with_same_content(*a, **kw):
+            yield (("order_agent:abc",), {"agent": {"messages": [msg1]}})
+            yield (("order_agent:abc",), {"agent": {"messages": [msg2]}})
+
+        shop.app.stream.side_effect = stream_with_same_content
+        shop.customer_agent.get_initial_message.return_value = "hello"
+        shop.customer_agent.respond_to.return_value = None
+
+        bus = EventBus()
+        runner = ConversationRunner(shop, bus)
+        runner.start(scenario_index=0)
+        runner._thread.join(timeout=5)
+
+        events = bus.drain()
+        agent_msgs = [e for e in events if e.event_type == EventType.AGENT_MESSAGE
+                      and e.content == "OK"]
+        self.assertEqual(len(agent_msgs), 2)
+
+
 class TestMaxTurnsLimit(unittest.TestCase):
     """Test 37: Conversation stops at MAX_CONVERSATION_TURNS."""
 
