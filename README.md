@@ -192,6 +192,20 @@ Orders and inventory are persisted in a local SQLite database (`coffee_shop.db`)
 - Suggest alternatives with customer service touch
 - Coordinate with other agents for resolution
 
+## Running the Tests
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Individual test modules can be run directly, e.g.:
+
+```bash
+python -m unittest tests/test_tools_order.py -v
+```
+
+Use the Python interpreter from the Poetry virtual environment (`poetry env activate` first, or prefix with `poetry run python`).
+
 ---
 ## Contributing
 Please read the [CONTRIBUTING.md](./CONTRIBUTING.md) to understand the contribution guidelines.
