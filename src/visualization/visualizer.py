@@ -18,13 +18,41 @@ def force_bw(gviz):
         line = re.sub(r'\b(fillcolor)="#[0-9a-fA-F]+"', r"\1=white", line)
         line = re.sub(r'\b(fontcolor)="#[0-9a-fA-F]+"', r"\1=black", line)
 
-        # Filled nodes (style=filled) with white fill need black text — already default.
-        # But filled nodes that had a colored fill now get white fill, so text is fine.
-        # Exception: blank-label nodes (label=" ") are Petri net places/transitions —
-        # keep them visually solid by giving them black fill instead of white.
         if "style=filled" in line and 'label=" "' in line:
             line = re.sub(r"\bfillcolor=white\b", "fillcolor=black", line)
 
+        new_body.append(line)
+
+    gviz.body = new_body
+    return gviz
+
+
+def force_translucent_nodes(gviz, alpha_hex="E6"):
+    """Use alpha_hex values to set node translucency. Values range from 00 (fully transparent) to FF (fully opaque):
+    0% = 00
+    10% = 1A
+    20% = 33
+    30% = 4D
+    40% = 66
+    50% = 80
+    60% = 99
+    70% = B3
+    80% = CC
+    90% = E6
+    100% = FF"""
+
+    new_body = []
+    for line in gviz.body:
+        line = re.sub(
+            r'(\bfillcolor=)"#([0-9a-fA-F]{6})"',
+            lambda m: f'{m.group(1)}"# {m.group(2)}{alpha_hex}"',
+            line,
+        )
+        line = re.sub(
+            r'(\bfontcolor=)"#([0-9a-fA-F]{6})"',
+            r"\1black",
+            line,
+        )
         new_body.append(line)
 
     gviz.body = new_body
@@ -74,10 +102,11 @@ class Visualizer:
     def _export_ocdfg(self, ocel) -> Path:
         """Expot an object centric directly-follows graph visualization."""
         ocdfg = ocdfg_discovery.apply(ocel)
-        gviz = force_bw(
+        gviz = force_translucent_nodes(
             ocdfg_visualizer.apply(
                 ocdfg, parameters={"format": self.config.export_format}
-            )
+            ),
+            "CC",
         )
         target = self.config.out_dir / f"oc-dfg.{self.config.export_format}"
         ocdfg_visualizer.save(gviz, str(target))
@@ -86,10 +115,11 @@ class Visualizer:
     def _export_ocpn(self, ocel) -> Path:
         """Export an object centric Petri net visualization."""
         ocpn = ocpn_discovery.apply(ocel)
-        gviz = force_bw(
+        gviz = force_translucent_nodes(
             ocpn_visualizer.apply(
                 ocpn, parameters={"format": self.config.export_format}
-            )
+            ),
+            "80",
         )
         target = self.config.out_dir / f"oc-pn.{self.config.export_format}"
         ocpn_visualizer.save(gviz, str(target))
@@ -100,7 +130,7 @@ class Visualizer:
 if __name__ == "__main__":
     root_dir = Path(__file__).resolve().parents[2]
     config = VisualizationConfig(
-        ocel_path=root_dir / "event_logs" / "ocel.json",
+        ocel_path=root_dir / "event_logs" / "demo_1.json",
         out_dir=root_dir / "generated_visualizations",
         export_format="svg",
     )
