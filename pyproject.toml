@@ -18,7 +18,8 @@ dependencies = [
     "sqlmodel (>=0.0.24,<0.1.0)",
     "ipykernel (>=6.30,<7.0)",
     "polars (>=1.40.1,<2.0.0)",
-    "pm4py (>=2.7.22.2,<3.0.0.0)"
+    "pm4py (>=2.7.22.2,<3.0.0.0)",
+    "graphviz (>=0.21,<0.22)"
 ]
 
 [project.scripts]
