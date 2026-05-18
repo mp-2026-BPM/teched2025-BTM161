@@ -1,0 +1,55 @@
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#2d3748', 'primaryTextColor': '#fff', 'primaryBorderColor': '#4a5568', 'lineColor': '#718096', 'secondaryColor': '#edf2f7', 'tertiaryColor': '#e2e8f0'}}}%%
+
+graph TB
+    %% --- Agents (any runtime) ---
+    subgraph Agents["Agents (runtime-agnostic)"]
+        direction LR
+        A["Agent A"]
+        B["Agent B"]
+        C["Agent C"]
+    end
+
+    %% --- Thin Adapter (only framework-specific code) ---
+    ADAPTER["Adapter<br/><i>~10 lines, framework-specific</i>"]
+
+    %% --- Guardrail System (standalone, framework-agnostic) ---
+    subgraph GuardrailSystem["Guardrail System (framework-agnostic)"]
+        direction TB
+
+        GATEWAY["Gateway<br/><i>evaluate(agent_id, action, context) → Verdict</i>"]
+
+        subgraph Internals[" "]
+            direction LR
+            LOCAL["Local Rules<br/><i>Per-agent policies</i>"]
+            GLOBAL["Global State<br/><i>System-wide invariants</i>"]
+            AUDIT["Audit Store<br/><i>Decision log</i>"]
+        end
+
+        GATEWAY --> LOCAL
+        GATEWAY --> GLOBAL
+        GATEWAY --> AUDIT
+    end
+
+    %% --- Execution ---
+    EXECUTION["Execution<br/>(Tools, DB, External)"]
+
+    %% --- Flow ---
+    Agents -->|"action request"| ADAPTER
+    ADAPTER -->|"evaluate()"| GATEWAY
+    GATEWAY -->|"Verdict: allowed"| EXECUTION
+    GATEWAY -->|"Verdict: denied / escalate"| ADAPTER
+    ADAPTER -->|"result / denial"| Agents
+    EXECUTION -->|"result"| Agents
+
+    %% --- Styling ---
+    classDef agentStyle fill:#3182ce,stroke:#2c5282,color:#fff,stroke-width:2px
+    classDef adapterStyle fill:#d69e2e,stroke:#975a16,color:#fff,stroke-width:2px
+    classDef gatewayStyle fill:#38a169,stroke:#276749,color:#fff,stroke-width:2px
+    classDef internalStyle fill:#4a5568,stroke:#2d3748,color:#fff,stroke-width:2px
+    classDef execStyle fill:#805ad5,stroke:#553c9a,color:#fff,stroke-width:2px
+
+    class A,B,C agentStyle
+    class ADAPTER adapterStyle
+    class GATEWAY gatewayStyle
+    class LOCAL,GLOBAL,AUDIT internalStyle
+    class EXECUTION execStyle

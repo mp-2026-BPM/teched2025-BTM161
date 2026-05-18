@@ -1,0 +1,55 @@
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#2d3748', 'primaryTextColor': '#fff', 'primaryBorderColor': '#4a5568', 'lineColor': '#718096', 'secondaryColor': '#edf2f7', 'tertiaryColor': '#e2e8f0'}}}%%
+
+graph LR
+    %% --- Entry ---
+    INPUT(("Input<br/>(message / handoff)"))
+
+    %% --- Guarded Agent as a LangGraph Subgraph ---
+    subgraph GuardedAgent["Guarded Agent (LangGraph Subgraph)"]
+        direction LR
+
+        INBOUND["Inbound<br/>Guard Node"]
+        AGENT["Agent Node<br/>(LLM)"]
+        OUTBOUND["Outbound<br/>Guard Node"]
+
+        INBOUND -->|"allowed"| AGENT
+        AGENT --> OUTBOUND
+    end
+
+    %% --- Routing after guards ---
+    INPUT --> INBOUND
+
+    INBOUND -->|"denied"| DENY_IN["Denial<br/>Response"]
+    OUTBOUND -->|"allowed"| ROUTER{"Route"}
+    OUTBOUND -->|"denied"| DENY_OUT["Denial<br/>Response"]
+    OUTBOUND -->|"escalate"| ESCALATION["Escalation<br/>(Manager / Human)"]
+
+    ROUTER -->|"tool call"| TOOLS["Tool<br/>Execution"]
+    ROUTER -->|"handoff"| NEXT_AGENT(("Next<br/>Guarded Agent"))
+    ROUTER -->|"response"| OUTPUT(("Output<br/>(to user)"))
+
+    TOOLS -->|"result"| AGENT
+
+    %% --- Shared Services ---
+    PIPELINE["Guardrail<br/>Pipeline"]
+    AUDIT["Audit<br/>Log"]
+
+    PIPELINE -.->|"evaluates"| INBOUND
+    PIPELINE -.->|"evaluates"| OUTBOUND
+    INBOUND -.-> AUDIT
+    OUTBOUND -.-> AUDIT
+
+    %% --- Styling ---
+    classDef guardStyle fill:#38a169,stroke:#276749,color:#fff,stroke-width:2px
+    classDef agentStyle fill:#3182ce,stroke:#2c5282,color:#fff,stroke-width:2px
+    classDef routeStyle fill:#805ad5,stroke:#553c9a,color:#fff,stroke-width:2px
+    classDef denyStyle fill:#e53e3e,stroke:#9b2c2c,color:#fff,stroke-width:2px
+    classDef serviceStyle fill:#4a5568,stroke:#2d3748,color:#fff,stroke-width:2px
+    classDef ioStyle fill:#319795,stroke:#234e52,color:#fff,stroke-width:2px
+
+    class INBOUND,OUTBOUND guardStyle
+    class AGENT agentStyle
+    class ROUTER routeStyle
+    class DENY_IN,DENY_OUT,ESCALATION denyStyle
+    class PIPELINE,AUDIT serviceStyle
+    class INPUT,OUTPUT,NEXT_AGENT,TOOLS ioStyle

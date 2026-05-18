@@ -1,0 +1,68 @@
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#2d3748', 'primaryTextColor': '#fff', 'primaryBorderColor': '#4a5568', 'lineColor': '#718096', 'secondaryColor': '#edf2f7', 'tertiaryColor': '#e2e8f0'}}}%%
+
+graph TB
+    %% --- System-Level Layer ---
+    subgraph System["System-Level Guardrails"]
+        direction TB
+        HOOK["Graph-Level Hook<br/><i>Runs before/after every node</i>"]
+        BLACKBOARD[("Shared Blackboard<br/><i>(in LangGraph State)</i><br/>totals, locks, counters,<br/>escalation queue")]
+        HOOK <-->|"read / write"| BLACKBOARD
+    end
+
+    %% --- Agents ---
+    subgraph AgentA["Guarded Agent A"]
+        direction LR
+        IN_A["Inbound<br/>Guard"] --> LLM_A["Agent<br/>(LLM)"] --> OUT_A["Outbound<br/>Guard"]
+    end
+
+    subgraph AgentB["Guarded Agent B"]
+        direction LR
+        IN_B["Inbound<br/>Guard"] --> LLM_B["Agent<br/>(LLM)"] --> OUT_B["Outbound<br/>Guard"]
+    end
+
+    subgraph AgentC["Guarded Agent C"]
+        direction LR
+        IN_C["Inbound<br/>Guard"] --> LLM_C["Agent<br/>(LLM)"] --> OUT_C["Outbound<br/>Guard"]
+    end
+
+    %% --- Connections: Agents ↔ Blackboard ---
+    OUT_A -->|"writes observations"| BLACKBOARD
+    OUT_B -->|"writes observations"| BLACKBOARD
+    OUT_C -->|"writes observations"| BLACKBOARD
+
+    BLACKBOARD -->|"informs"| IN_A
+    BLACKBOARD -->|"informs"| IN_B
+    BLACKBOARD -->|"informs"| IN_C
+
+    %% --- Graph Hook controls flow ---
+    HOOK -->|"allow / block<br/>next node"| AgentA
+    HOOK -->|"allow / block<br/>next node"| AgentB
+    HOOK -->|"allow / block<br/>next node"| AgentC
+
+    %% --- Execution & Audit ---
+    EXECUTION["Execution Layer<br/>(Tools, DB, Handoffs)"]
+    AUDIT["Audit Log"]
+
+    AgentA -->|"allowed actions"| EXECUTION
+    AgentB -->|"allowed actions"| EXECUTION
+    AgentC -->|"allowed actions"| EXECUTION
+
+    HOOK -.-> AUDIT
+    OUT_A -.-> AUDIT
+    OUT_B -.-> AUDIT
+    OUT_C -.-> AUDIT
+
+    %% --- Styling ---
+    classDef systemStyle fill:#d69e2e,stroke:#975a16,color:#fff,stroke-width:2px
+    classDef blackboardStyle fill:#4a5568,stroke:#2d3748,color:#fff,stroke-width:2px
+    classDef guardStyle fill:#38a169,stroke:#276749,color:#fff,stroke-width:2px
+    classDef agentStyle fill:#3182ce,stroke:#2c5282,color:#fff,stroke-width:2px
+    classDef execStyle fill:#805ad5,stroke:#553c9a,color:#fff,stroke-width:2px
+    classDef auditStyle fill:#319795,stroke:#234e52,color:#fff,stroke-width:2px
+
+    class HOOK systemStyle
+    class BLACKBOARD blackboardStyle
+    class IN_A,OUT_A,IN_B,OUT_B,IN_C,OUT_C guardStyle
+    class LLM_A,LLM_B,LLM_C agentStyle
+    class EXECUTION execStyle
+    class AUDIT auditStyle

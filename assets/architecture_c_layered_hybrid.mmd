@@ -1,0 +1,45 @@
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#2d3748', 'primaryTextColor': '#fff', 'primaryBorderColor': '#4a5568', 'lineColor': '#718096', 'secondaryColor': '#edf2f7', 'tertiaryColor': '#e2e8f0'}}}%%
+
+graph TB
+    %% --- High-Level Components ---
+    AGENTS["Restaurant Agents"]
+
+    subgraph Pipeline["Guardrail Pipeline"]
+        direction TB
+        L1["Layer 1: Schema & Scope<br/><i>Fast, Deterministic</i>"]
+        L2["Layer 2: Policy Engine<br/><i>Rule-Based</i>"]
+        L3["Layer 3: LLM Judge<br/><i>Conditional, AI-Based</i>"]
+
+        L1 -->|"Pass / Fail"| L2
+        L2 -->|"Pass / Uncertain"| L3
+    end
+
+    EXECUTION["Execution Layer"]
+    REGISTRY["Guardrail Registry<br/><i>Pluggable</i>"]
+    AUDIT["Audit & Observability"]
+
+    %% --- Connections ---
+    AGENTS -->|"Action Request"| Pipeline
+    Pipeline -->|"Allowed"| EXECUTION
+    Pipeline -->|"Denied / Escalate"| AGENTS
+    EXECUTION -->|"Result"| AGENTS
+
+    REGISTRY -.->|"Supplies policies"| Pipeline
+    Pipeline -->|"Logs decision"| AUDIT
+
+    %% --- Styling ---
+    classDef agentStyle fill:#3182ce,stroke:#2c5282,color:#fff,stroke-width:2px
+    classDef layer1Style fill:#38a169,stroke:#276749,color:#fff,stroke-width:2px
+    classDef layer2Style fill:#d69e2e,stroke:#975a16,color:#fff,stroke-width:2px
+    classDef layer3Style fill:#e53e3e,stroke:#9b2c2c,color:#fff,stroke-width:2px
+    classDef execStyle fill:#805ad5,stroke:#553c9a,color:#fff,stroke-width:2px
+    classDef registryStyle fill:#4a5568,stroke:#2d3748,color:#fff,stroke-width:2px
+    classDef auditStyle fill:#319795,stroke:#234e52,color:#fff,stroke-width:2px
+
+    class AGENTS agentStyle
+    class L1 layer1Style
+    class L2 layer2Style
+    class L3 layer3Style
+    class EXECUTION execStyle
+    class REGISTRY registryStyle
+    class AUDIT auditStyle
